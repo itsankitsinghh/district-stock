@@ -6,7 +6,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState('splash'); // 'splash' | 'login' | 'dashboard'
+  const [currentScreen, setCurrentScreen] = useState('splash');
   const [session, setSession] = useState(null);
 
   const handleSplashFinish = () => {
@@ -30,21 +30,21 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <View style={styles.root}>
-      {currentScreen === 'splash' && (
-        <SplashScreen onFinish={handleSplashFinish} />
-      )}
-      {currentScreen === 'login' && (
-        <LoginScreen
-          onLoginSuccess={handleLoginSuccess}
-          onReplaySplash={handleReplaySplash}
-        />
-      )}
-      {currentScreen === 'dashboard' && (
-        <DashboardScreen
-          session={session}
-          onLogout={handleLogout}
-        />
-      )}
+        {currentScreen === 'splash' && (
+          <SplashScreen onFinish={handleSplashFinish} />
+        )}
+        {currentScreen === 'login' && (
+          <LoginScreen
+            onLoginSuccess={handleLoginSuccess}
+            onReplaySplash={handleReplaySplash}
+          />
+        )}
+        {currentScreen === 'dashboard' && (
+          <DashboardScreen
+            session={session}
+            onLogout={handleLogout}
+          />
+        )}
       </View>
     </SafeAreaProvider>
   );
@@ -53,6 +53,6 @@ export default function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#0B0719',
   },
 });

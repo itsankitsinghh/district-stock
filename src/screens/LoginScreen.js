@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 
 export default function LoginScreen({ onLoginSuccess, onReplaySplash }) {
@@ -25,6 +25,8 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash }) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null); // 'user' | 'pass' | null
+
+  const scrollViewRef = useRef(null);
 
   // Pulsing animation for the "Terminal Online" status dot
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
@@ -68,9 +70,12 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash }) {
     }, 700);
   };
 
-  const handleQuickDemoFill = () => {
-    setUserId('DST-CREW-8942');
-    setPassword('district@2026');
+  const handleFocusPassword = () => {
+    setFocusedInput('pass');
+    // Smoothly scroll down so password field and login button are completely in view above keyboard
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 150);
   };
 
   return (
@@ -93,22 +98,23 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash }) {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
         style={styles.flexOne}
       >
         <ScrollView
+          ref={scrollViewRef}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.scrollContent}
         >
           {/* Header Brand Section */}
           <View style={styles.brandContainer}>
             <View style={styles.logoWrapper}>
-              <View style={styles.logoGlowRing}>
-                <Image
-                  source={require('../../assets/district_logo.png')}
-                  style={styles.logoImage}
-                  resizeMode="contain"
-                />
-              </View>
+              <Image
+                source={require('../../assets/district_logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
 
             <Text style={styles.brandTitle}>DISTRICT STOCK</Text>
@@ -167,7 +173,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash }) {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
-                onFocus={() => setFocusedInput('pass')}
+                onFocus={handleFocusPassword}
                 onBlur={() => setFocusedInput(null)}
               />
               <TouchableOpacity
@@ -200,16 +206,6 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash }) {
                   <Text style={styles.loginButtonText}>LOGIN</Text>
                 )}
               </LinearGradient>
-            </TouchableOpacity>
-
-            {/* User-friendly Quick Demo Credentials Helper */}
-            <TouchableOpacity
-              onPress={handleQuickDemoFill}
-              style={styles.demoFillRow}
-              activeOpacity={0.7}
-            >
-              <MaterialCommunityIcons name="flash-outline" size={14} color={COLORS.textLilac} />
-              <Text style={styles.demoFillText}>Quick Demo Autofill</Text>
             </TouchableOpacity>
           </View>
 
@@ -253,7 +249,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 36 : 12,
+    paddingTop: Platform.OS === 'android' ? 8 : 4,
   },
   replayButton: {
     flexDirection: 'row',
@@ -273,37 +269,32 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 10,
-    paddingBottom: 36,
+    paddingHorizontal: 22,
+    paddingTop: 8,
+    paddingBottom: 40,
     justifyContent: 'center',
   },
   brandContainer: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
   },
   logoWrapper: {
-    marginBottom: 18,
+    marginBottom: 14,
     shadowColor: COLORS.primaryGlow,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.5,
-    shadowRadius: 16,
+    shadowRadius: 18,
     elevation: 10,
-  },
-  logoGlowRing: {
-    padding: 3,
-    borderRadius: 26,
-    borderWidth: 1.5,
-    borderColor: 'rgba(157, 78, 221, 0.5)',
-    backgroundColor: 'rgba(35, 15, 75, 0.4)',
+    borderRadius: 24,
+    overflow: 'hidden',
   },
   logoImage: {
-    width: 86,
-    height: 86,
+    width: 82,
+    height: 82,
     borderRadius: 22,
   },
   brandTitle: {
-    fontSize: 24,
+    fontSize: 23,
     fontWeight: '900',
     color: COLORS.white,
     letterSpacing: 2.2,
@@ -314,14 +305,15 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: COLORS.textLilac,
     letterSpacing: 0.4,
-    marginTop: 6,
+    marginTop: 5,
     textAlign: 'center',
   },
   loginCard: {
     backgroundColor: COLORS.cardBg,
     borderRadius: 24,
     paddingHorizontal: 22,
-    paddingVertical: 26,
+    paddingTop: 24,
+    paddingBottom: 24,
     borderWidth: 1,
     borderColor: COLORS.borderCard,
     shadowColor: '#000',
@@ -340,7 +332,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textMuted,
     marginTop: 4,
-    marginBottom: 24,
+    marginBottom: 20,
     lineHeight: 18,
   },
   inputWrapper: {
@@ -351,8 +343,8 @@ const styles = StyleSheet.create({
     borderWidth: 1.2,
     borderColor: COLORS.borderInput,
     paddingHorizontal: 16,
-    height: 56,
-    marginBottom: 16,
+    height: 54,
+    marginBottom: 14,
   },
   inputWrapperFocused: {
     borderColor: COLORS.borderFocus,
@@ -379,7 +371,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   loginButtonWrapper: {
-    marginTop: 8,
+    marginTop: 10,
     borderRadius: 14,
     overflow: 'hidden',
     shadowColor: COLORS.primaryGlow,
@@ -389,7 +381,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   loginButton: {
-    height: 54,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
@@ -400,24 +392,11 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     letterSpacing: 1.5,
   },
-  demoFillRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 18,
-    paddingVertical: 6,
-  },
-  demoFillText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textLilac,
-    marginLeft: 5,
-  },
   footerStatus: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 28,
+    marginTop: 22,
   },
   statusDot: {
     width: 7,
