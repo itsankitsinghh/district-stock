@@ -80,13 +80,9 @@ export default function SplashScreen({ onFinish }) {
       <SafeAreaView style={styles.safeArea}>
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
           {/* Clean Typography-First Header (Figma 1 · Splash accurate) */}
+          {/* Brand Typography: "district stock" in same size matching logo styling */}
           <View style={styles.header}>
-            <View style={styles.brandTitleRow}>
-              <Text style={styles.brandDistrict}>district</Text>
-              <View style={styles.stockBadge}>
-                <Text style={styles.stockBadgeText}>STOCK</Text>
-              </View>
-            </View>
+            <Text style={styles.brandTitle}>district stock</Text>
             <Text style={styles.headerSubtitle}>Event Inventory & Logistics</Text>
           </View>
 
@@ -169,32 +165,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 48,
   },
-  brandTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandDistrict: {
-    fontSize: 42,
+  brandTitle: {
+    fontSize: 36,
     fontWeight: '900',
     color: COLORS.white,
-    letterSpacing: -1.2,
+    letterSpacing: -1,
     textTransform: 'lowercase',
-  },
-  stockBadge: {
-    backgroundColor: '#7A1CE9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    marginLeft: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(192, 132, 252, 0.4)',
-  },
-  stockBadgeText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.white,
-    letterSpacing: 1.5,
+    textAlign: 'center',
+    textShadowColor: 'rgba(122, 28, 233, 0.85)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 8,
   },
   headerSubtitle: {
     fontSize: 14,
