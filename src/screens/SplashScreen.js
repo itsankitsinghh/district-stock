@@ -3,6 +3,7 @@ import {
   StyleSheet,
   View,
   Text,
+  Image,
   Animated,
   Dimensions,
   StatusBar,
@@ -79,10 +80,13 @@ export default function SplashScreen({ onFinish }) {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <SafeAreaView style={styles.safeArea}>
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-          {/* Clean Typography-First Header (Figma 1 · Splash accurate) */}
-          {/* Brand Typography: "district stock" in same size matching logo styling */}
+          {/* Authentic Brand Wordmark with exact "tedha medha" custom logo font */}
           <View style={styles.header}>
-            <Text style={styles.brandTitle}>district stock</Text>
+            <Image
+              source={require('../../assets/district_stock_exact_font.png')}
+              style={styles.exactWordmarkImage}
+              resizeMode="contain"
+            />
             <Text style={styles.headerSubtitle}>Event Inventory & Logistics</Text>
           </View>
 
@@ -165,16 +169,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 48,
   },
-  brandTitle: {
-    fontSize: 36,
-    fontWeight: '900',
-    color: COLORS.white,
-    letterSpacing: -1,
-    textTransform: 'lowercase',
-    textAlign: 'center',
-    textShadowColor: 'rgba(122, 28, 233, 0.85)',
-    textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 8,
+  exactWordmarkImage: {
+    width: 250,
+    height: 130,
   },
   headerSubtitle: {
     fontSize: 14,
