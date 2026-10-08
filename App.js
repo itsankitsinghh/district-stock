@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
@@ -27,7 +28,8 @@ export default function App() {
   };
 
   return (
-    <View style={styles.root}>
+    <SafeAreaProvider>
+      <View style={styles.root}>
       {currentScreen === 'splash' && (
         <SplashScreen onFinish={handleSplashFinish} />
       )}
@@ -43,7 +45,8 @@ export default function App() {
           onLogout={handleLogout}
         />
       )}
-    </View>
+      </View>
+    </SafeAreaProvider>
   );
 }
 
