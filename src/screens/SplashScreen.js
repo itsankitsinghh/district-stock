@@ -170,16 +170,16 @@ const styles = StyleSheet.create({
     marginTop: 48,
   },
   exactSingleLineWordmark: {
-    width: width * 0.84,
-    height: 52,
-    marginBottom: 6,
+    width: width * 0.82,
+    height: 48,
+    marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: COLORS.textLilac,
     letterSpacing: 0.8,
-    marginTop: 8,
+    marginTop: 6,
     textAlign: 'center',
   },
   centerGraphicContainer: {
