@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   SafeAreaView,
   StatusBar,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
+  Animated,
+  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,283 +20,219 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 
 export default function LoginScreen({ onLoginSuccess, onReplaySplash }) {
-  const [loginMethod, setLoginMethod] = useState('phone'); // 'phone' | 'empId'
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [employeeId, setEmployeeId] = useState('');
-  const [selectedHub, setSelectedHub] = useState('Central Warehouse - Hub 1');
-  const [isOtpSent, setIsOtpSent] = useState(false);
-  const [otp, setOtp] = useState('');
+  const [userId, setUserId] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [focusedInput, setFocusedInput] = useState(null); // 'user' | 'pass' | null
 
-  const hubs = [
-    'Central Warehouse - Hub 1',
-    'Zomato Live Arena - F&B North',
-    'Concert Main Stage - Bar 2',
-    'Merchandise Pavilion',
-  ];
+  // Pulsing animation for the "Terminal Online" status dot
+  const pulseAnim = useRef(new Animated.Value(0.4)).current;
 
-  const handleContinue = () => {
-    if (loginMethod === 'phone' && !phoneNumber.trim()) {
-      Alert.alert('Required', 'Please enter your registered mobile number.');
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0.35,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  const handleLogin = () => {
+    if (!userId.trim()) {
+      Alert.alert('Required', 'Please enter your User ID.');
       return;
     }
-    if (loginMethod === 'empId' && !employeeId.trim()) {
-      Alert.alert('Required', 'Please enter your District Employee ID.');
+    if (!password.trim()) {
+      Alert.alert('Required', 'Please enter your Password.');
       return;
     }
 
-    if (!isOtpSent) {
-      setIsOtpSent(true);
-      Alert.alert('OTP Sent', 'A 4-digit verification code has been sent to your registered contact.');
-    } else {
-      if (otp.length < 4) {
-        Alert.alert('Invalid OTP', 'Please enter the 4-digit verification code.');
-        return;
-      }
+    setIsLoading(true);
+    setTimeout(() => {
+      setIsLoading(false);
       if (onLoginSuccess) {
         onLoginSuccess({
-          user: loginMethod === 'phone' ? phoneNumber : employeeId,
-          hub: selectedHub,
+          user: userId,
+          hub: 'Central Warehouse - Terminal 01',
         });
       }
-    }
+    }, 700);
   };
 
   const handleQuickDemoFill = () => {
-    setLoginMethod('phone');
-    setPhoneNumber('9876543210');
-    setIsOtpSent(true);
-    setOtp('1234');
+    setUserId('DST-CREW-8942');
+    setPassword('district@2026');
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* Top Brand Banner Header */}
-      <LinearGradient
-        colors={[COLORS.primary, COLORS.primaryDark]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.heroBanner}
-      >
-        <View style={styles.topNavRow}>
-          {onReplaySplash && (
-            <TouchableOpacity onPress={onReplaySplash} style={styles.replayButton}>
-              <Ionicons name="refresh" size={16} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.replayText}>Splash View</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+      {/* Subtle top bar for splash replay */}
+      <View style={styles.topControlRow}>
+        {onReplaySplash && (
+          <TouchableOpacity
+            onPress={onReplaySplash}
+            style={styles.replayButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="sparkles-outline" size={13} color={COLORS.textLilac} />
+            <Text style={styles.replayText}>Replay Splash</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
-        <View style={styles.heroContent}>
-          <Image
-            source={require('../../assets/district_logo.png')}
-            style={styles.heroLogo}
-            resizeMode="contain"
-          />
-          <View style={styles.heroTextContainer}>
-            <Text style={styles.heroTitle}>district stock</Text>
-            <Text style={styles.heroSubtitle}>Ground Operations & Inventory Portal</Text>
-          </View>
-        </View>
-      </LinearGradient>
-
-      {/* Content Form */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.formContainer}
+        style={styles.flexOne}
       >
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* Welcome Card */}
-          <View style={styles.welcomeCard}>
-            <Text style={styles.welcomeGreeting}>Welcome Crew 👋</Text>
-            <Text style={styles.welcomeDesc}>
-              Log in to scan inventory, track live venue stock, and manage logistics transfers.
+          {/* Header Brand Section */}
+          <View style={styles.brandContainer}>
+            <View style={styles.logoWrapper}>
+              <View style={styles.logoGlowRing}>
+                <Image
+                  source={require('../../assets/district_logo.png')}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+
+            <Text style={styles.brandTitle}>DISTRICT STOCK</Text>
+            <Text style={styles.brandSubtitle}>Event Logistics & Stock Movement</Text>
+          </View>
+
+          {/* Login Card */}
+          <View style={styles.loginCard}>
+            <Text style={styles.cardHeading}>Login</Text>
+            <Text style={styles.cardSubheading}>
+              Enter authorised user credentials to continue.
             </Text>
 
-            {/* Login Mode Toggle Tabs */}
-            <View style={styles.toggleTrack}>
-              <TouchableOpacity
-                onPress={() => {
-                  setLoginMethod('phone');
-                  setIsOtpSent(false);
-                }}
-                style={[
-                  styles.toggleTab,
-                  loginMethod === 'phone' && styles.toggleTabActive,
-                ]}
-              >
-                <Ionicons
-                  name="phone-portrait-outline"
-                  size={16}
-                  color={loginMethod === 'phone' ? COLORS.primary : COLORS.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.toggleTabText,
-                    loginMethod === 'phone' && styles.toggleTabTextActive,
-                  ]}
-                >
-                  Mobile Number
-                </Text>
-              </TouchableOpacity>
+            {/* User ID Field */}
+            <View
+              style={[
+                styles.inputWrapper,
+                focusedInput === 'user' && styles.inputWrapperFocused,
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="account"
+                size={22}
+                color={focusedInput === 'user' ? COLORS.primaryElectric : COLORS.textLilacSub}
+                style={styles.inputLeadingIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="User ID"
+                placeholderTextColor={COLORS.textDim}
+                value={userId}
+                onChangeText={setUserId}
+                autoCapitalize="none"
+                onFocus={() => setFocusedInput('user')}
+                onBlur={() => setFocusedInput(null)}
+              />
+            </View>
 
+            {/* Password Field */}
+            <View
+              style={[
+                styles.inputWrapper,
+                focusedInput === 'pass' && styles.inputWrapperFocused,
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="lock"
+                size={22}
+                color={focusedInput === 'pass' ? COLORS.primaryElectric : COLORS.textLilacSub}
+                style={styles.inputLeadingIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor={COLORS.textDim}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                onFocus={() => setFocusedInput('pass')}
+                onBlur={() => setFocusedInput(null)}
+              />
               <TouchableOpacity
-                onPress={() => {
-                  setLoginMethod('empId');
-                  setIsOtpSent(false);
-                }}
-                style={[
-                  styles.toggleTab,
-                  loginMethod === 'empId' && styles.toggleTabActive,
-                ]}
+                onPress={() => setShowPassword(!showPassword)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.showButton}
               >
-                <Ionicons
-                  name="badge-account-outline"
-                  size={16}
-                  color={loginMethod === 'empId' ? COLORS.primary : COLORS.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.toggleTabText,
-                    loginMethod === 'empId' && styles.toggleTabTextActive,
-                  ]}
-                >
-                  Staff ID
+                <Text style={styles.showButtonText}>
+                  {showPassword ? 'HIDE' : 'SHOW'}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Input Field */}
-            {loginMethod === 'phone' ? (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Registered Mobile</Text>
-                <View style={styles.phoneInputRow}>
-                  <View style={styles.countryCodeBadge}>
-                    <Text style={styles.flagEmoji}>🇮🇳</Text>
-                    <Text style={styles.countryCodeText}>+91</Text>
-                  </View>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Enter 10-digit number"
-                    placeholderTextColor={COLORS.textLight}
-                    keyboardType="phone-pad"
-                    maxLength={10}
-                    value={phoneNumber}
-                    onChangeText={setPhoneNumber}
-                  />
-                </View>
-              </View>
-            ) : (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>District Employee Code</Text>
-                <View style={styles.textInputRow}>
-                  <Ionicons name="card-outline" size={20} color={COLORS.textMuted} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="e.g. DST-2024-89"
-                    placeholderTextColor={COLORS.textLight}
-                    autoCapitalize="characters"
-                    value={employeeId}
-                    onChangeText={setEmployeeId}
-                  />
-                </View>
-              </View>
-            )}
-
-            {/* OTP Field if sent */}
-            {isOtpSent && (
-              <View style={styles.inputGroup}>
-                <View style={styles.otpHeaderRow}>
-                  <Text style={styles.inputLabel}>Enter 4-Digit Verification OTP</Text>
-                  <TouchableOpacity onPress={() => Alert.alert('Demo OTP', 'Use 1234 for demo testing.')}>
-                    <Text style={styles.resendText}>Resend OTP</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.textInputRow}>
-                  <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.accentGreen} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="••••"
-                    placeholderTextColor={COLORS.textLight}
-                    keyboardType="number-pad"
-                    maxLength={4}
-                    value={otp}
-                    onChangeText={setOtp}
-                  />
-                </View>
-              </View>
-            )}
-
-            {/* Event / Assigned Station Selector */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Assign Station / Location Hub</Text>
-              <View style={styles.hubChipsContainer}>
-                {hubs.map((hub) => {
-                  const isSelected = selectedHub === hub;
-                  return (
-                    <TouchableOpacity
-                      key={hub}
-                      onPress={() => setSelectedHub(hub)}
-                      style={[styles.hubChip, isSelected && styles.hubChipSelected]}
-                    >
-                      <Ionicons
-                        name="location"
-                        size={12}
-                        color={isSelected ? COLORS.white : COLORS.primary}
-                        style={{ marginRight: 4 }}
-                      />
-                      <Text
-                        style={[
-                          styles.hubChipText,
-                          isSelected && styles.hubChipTextSelected,
-                        ]}
-                      >
-                        {hub}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Primary Action Button */}
+            {/* Login Button */}
             <TouchableOpacity
-              onPress={handleContinue}
-              activeOpacity={0.88}
-              style={styles.primaryButtonWrapper}
+              onPress={handleLogin}
+              activeOpacity={0.85}
+              disabled={isLoading}
+              style={styles.loginButtonWrapper}
             >
               <LinearGradient
-                colors={[COLORS.primary, COLORS.primaryDark]}
+                colors={['#8419F7', '#6F12E0']}
                 start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.primaryButton}
+                end={{ x: 1, y: 1 }}
+                style={styles.loginButton}
               >
-                <Text style={styles.primaryButtonText}>
-                  {isOtpSent ? 'Verify & Access Hub' : 'Send Verification OTP'}
-                </Text>
-                <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
+                {isLoading ? (
+                  <ActivityIndicator color={COLORS.white} size="small" />
+                ) : (
+                  <Text style={styles.loginButtonText}>LOGIN</Text>
+                )}
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* Quick Demo Pre-fill for Testing */}
+            {/* User-friendly Quick Demo Credentials Helper */}
             <TouchableOpacity
               onPress={handleQuickDemoFill}
-              style={styles.quickFillButton}
+              style={styles.demoFillRow}
+              activeOpacity={0.7}
             >
-              <Ionicons name="flash" size={14} color={COLORS.accentOrange} />
-              <Text style={styles.quickFillText}>Quick Demo Credentials</Text>
+              <MaterialCommunityIcons name="flash-outline" size={14} color={COLORS.textLilac} />
+              <Text style={styles.demoFillText}>Quick Demo Autofill</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Security Footer */}
-          <View style={styles.footerNote}>
-            <Ionicons name="shield-checkmark" size={14} color={COLORS.textMuted} />
-            <Text style={styles.footerNoteText}>
-              Authorized personnel only · District by Zomato Logistics
+          {/* Footer Security Status */}
+          <View style={styles.footerStatus}>
+            <Animated.View
+              style={[
+                styles.statusDot,
+                {
+                  opacity: pulseAnim,
+                  transform: [
+                    {
+                      scale: pulseAnim.interpolate({
+                        inputRange: [0.35, 1],
+                        outputRange: [0.85, 1.2],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            />
+            <Text style={styles.statusText}>
+              Terminal Online • 256-bit Encrypted Session
             </Text>
           </View>
         </ScrollView>
@@ -306,272 +244,192 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.backgroundLight,
+    backgroundColor: COLORS.background,
   },
-  heroBanner: {
-    paddingTop: Platform.OS === 'android' ? 44 : 20,
-    paddingBottom: 26,
-    paddingHorizontal: 22,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+  flexOne: {
+    flex: 1,
   },
-  topNavRow: {
+  topControlRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginBottom: 8,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 36 : 12,
   },
   replayButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(123, 28, 240, 0.15)',
+    paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(123, 28, 240, 0.3)',
   },
   replayText: {
-    color: COLORS.white,
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
-    marginLeft: 4,
-  },
-  heroContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  heroLogo: {
-    width: 58,
-    height: 58,
-    borderRadius: 16,
-    marginRight: 14,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
-  },
-  heroTextContainer: {
-    flex: 1,
-  },
-  heroTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: COLORS.white,
-    letterSpacing: -0.5,
-  },
-  heroSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  formContainer: {
-    flex: 1,
+    color: COLORS.textLilac,
+    marginLeft: 5,
   },
   scrollContent: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 40,
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 36,
+    justifyContent: 'center',
   },
-  welcomeCard: {
-    backgroundColor: COLORS.cardBg,
+  brandContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  logoWrapper: {
+    marginBottom: 18,
+    shadowColor: COLORS.primaryGlow,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  logoGlowRing: {
+    padding: 3,
+    borderRadius: 26,
+    borderWidth: 1.5,
+    borderColor: 'rgba(157, 78, 221, 0.5)',
+    backgroundColor: 'rgba(35, 15, 75, 0.4)',
+  },
+  logoImage: {
+    width: 86,
+    height: 86,
     borderRadius: 22,
-    padding: 22,
-    shadowColor: '#5F17E3',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    elevation: 3,
   },
-  welcomeGreeting: {
+  brandTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.white,
+    letterSpacing: 2.2,
+    textAlign: 'center',
+  },
+  brandSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: COLORS.textLilac,
+    letterSpacing: 0.4,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  loginCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+    borderWidth: 1,
+    borderColor: COLORS.borderCard,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 6,
+  },
+  cardHeading: {
     fontSize: 22,
     fontWeight: '800',
-    color: COLORS.textDark,
-    marginBottom: 6,
+    color: COLORS.white,
+    letterSpacing: -0.3,
   },
-  welcomeDesc: {
-    fontSize: 13.5,
-    color: COLORS.textMuted,
-    lineHeight: 19,
-    marginBottom: 20,
-  },
-  toggleTrack: {
-    flexDirection: 'row',
-    backgroundColor: '#F0EFF8',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 22,
-  },
-  toggleTab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  toggleTabActive: {
-    backgroundColor: COLORS.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  toggleTabText: {
+  cardSubheading: {
     fontSize: 13,
-    fontWeight: '600',
     color: COLORS.textMuted,
-    marginLeft: 6,
+    marginTop: 4,
+    marginBottom: 24,
+    lineHeight: 18,
   },
-  toggleTabTextActive: {
-    color: COLORS.primary,
-    fontWeight: '700',
-  },
-  inputGroup: {
-    marginBottom: 18,
-  },
-  inputLabel: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: COLORS.textDark,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 8,
-  },
-  phoneInputRow: {
+  inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  countryCodeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F4F4F8',
-    paddingHorizontal: 12,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  flagEmoji: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  countryCodeText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textDark,
-  },
-  textInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FAFAFC',
-    borderRadius: 12,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 14,
     borderWidth: 1.2,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
+    borderColor: COLORS.borderInput,
+    paddingHorizontal: 16,
+    height: 56,
+    marginBottom: 16,
   },
-  inputIcon: {
-    marginRight: 10,
+  inputWrapperFocused: {
+    borderColor: COLORS.borderFocus,
+    backgroundColor: '#201642',
   },
-  textInput: {
+  inputLeadingIcon: {
+    marginRight: 12,
+  },
+  input: {
     flex: 1,
-    backgroundColor: '#FAFAFC',
-    borderRadius: 12,
-    borderWidth: 1.2,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    height: '100%',
+    color: COLORS.white,
     fontSize: 15,
-    color: COLORS.textDark,
     fontWeight: '500',
   },
-  otpHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  showButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
-  resendText: {
+  showButtonText: {
     fontSize: 12,
-    color: COLORS.primary,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: COLORS.textLilac,
+    letterSpacing: 0.8,
   },
-  hubChipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 4,
-  },
-  hubChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.primarySoft,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#DFD3FF',
-  },
-  hubChipSelected: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  hubChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.primary,
-  },
-  hubChipTextSelected: {
-    color: COLORS.white,
-  },
-  primaryButtonWrapper: {
-    marginTop: 10,
+  loginButtonWrapper: {
+    marginTop: 8,
     borderRadius: 14,
     overflow: 'hidden',
-    shadowColor: COLORS.primary,
+    shadowColor: COLORS.primaryGlow,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  primaryButton: {
+  loginButton: {
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+  },
+  loginButtonText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: COLORS.white,
+    letterSpacing: 1.5,
+  },
+  demoFillRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    marginTop: 18,
+    paddingVertical: 6,
   },
-  primaryButtonText: {
-    fontSize: 15.5,
-    fontWeight: '800',
-    color: COLORS.white,
-    letterSpacing: 0.2,
+  demoFillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textLilac,
+    marginLeft: 5,
+  },
+  footerStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 28,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: COLORS.onlineGreen,
     marginRight: 8,
   },
-  quickFillButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    paddingVertical: 10,
-    backgroundColor: '#FFF7ED',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-  },
-  quickFillText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: '#C2410C',
-    marginLeft: 6,
-  },
-  footerNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 22,
-  },
-  footerNoteText: {
-    fontSize: 11.5,
-    color: COLORS.textMuted,
-    marginLeft: 6,
+  statusText: {
+    fontSize: 12,
+    color: COLORS.textDim,
     fontWeight: '500',
+    letterSpacing: 0.2,
   },
 });

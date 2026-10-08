@@ -1,29 +1,31 @@
-// District by Zomato Brand Design Tokens
+// District by Zomato Dark Luxury Operations Theme Tokens
 export const COLORS = {
-  // District Signature Purples
-  primary: '#5F17E3',
-  primaryDark: '#3A0799',
-  primaryDeep: '#260467',
-  primaryLight: '#7D3DFE',
-  primarySoft: '#F2EBFF',
+  // Deep Space Backgrounds
+  background: '#0B0719',
+  backgroundDark: '#080514',
+  cardBg: '#15102A',
+  inputBg: '#1C1439',
+  
+  // Neon & Electric Purples
+  primary: '#7B1CF0',
+  primaryElectric: '#8A2BE2',
+  primaryGlow: '#9D4EDD',
+  primarySoft: '#291852',
+  textLilac: '#C084FC',
+  textLilacSub: '#A855F7',
   
   // Accents & Signals
-  accentGreen: '#05D686',
-  accentOrange: '#FF7A00',
-  error: '#FF3B30',
+  onlineGreen: '#10B981',
+  error: '#EF4444',
+  warning: '#F59E0B',
   
-  // Neutrals & Surfaces
+  // Neutrals & Text
   white: '#FFFFFF',
-  backgroundLight: '#F7F8FC',
-  cardBg: '#FFFFFF',
+  textMuted: '#8F84B0',
+  textDim: '#695E86',
   
-  // Text Colors
-  textDark: '#12121E',
-  textMuted: '#6E6E82',
-  textLight: '#9E9EB2',
-  textWhite: '#FFFFFF',
-  
-  // Borders & Dividers
-  border: '#E8E8F0',
-  borderFocus: '#5F17E3',
+  // Borders & Outlines
+  borderCard: '#2B1E54',
+  borderInput: '#2E215C',
+  borderFocus: '#8A2BE2',
 };
