@@ -113,7 +113,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
               <Image
                 source={require('../../assets/district_logo.png')}
                 style={styles.logoImage}
-                resizeMode="cover"
+                resizeMode="contain"
               />
             </View>
 
@@ -296,13 +296,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 18,
     elevation: 10,
-    borderRadius: 22,
-    backgroundColor: '#0B0719',
   },
   logoImage: {
-    width: 82,
-    height: 82,
-    borderRadius: 22,
+    width: 86,
+    height: 86,
   },
   brandTitle: {
     fontSize: 23,
