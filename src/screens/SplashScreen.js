@@ -3,7 +3,6 @@ import {
   StyleSheet,
   View,
   Text,
-  Image,
   Animated,
   Dimensions,
   StatusBar,
@@ -80,16 +79,6 @@ export default function SplashScreen({ onFinish }) {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <SafeAreaView style={styles.safeArea}>
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-          {/* Brand Typography: "district stock" in SAME line, SAME size & exact logo font */}
-          <View style={styles.header}>
-            <Image
-              source={require('../../assets/district_stock_single_line.png')}
-              style={styles.exactSingleLineWordmark}
-              resizeMode="contain"
-            />
-            <Text style={styles.headerSubtitle}>Event Inventory & Logistics</Text>
-          </View>
-
           {/* Center Hero: White Outline Cargo Truck & Floating Parcel */}
           <Animated.View
             style={[
@@ -98,6 +87,9 @@ export default function SplashScreen({ onFinish }) {
             ]}
           >
             <View style={styles.truckIllustrationBox}>
+              {/* Soft Ambient Radial Purple Glow */}
+              <View style={styles.ambientGlow} />
+
               {/* Floating Cargo Parcel */}
               <Animated.View
                 style={[
@@ -116,7 +108,7 @@ export default function SplashScreen({ onFinish }) {
               <View style={styles.truckWrapper}>
                 <MaterialCommunityIcons
                   name="truck-delivery-outline"
-                  size={120}
+                  size={124}
                   color={COLORS.white}
                 />
               </View>
@@ -130,8 +122,8 @@ export default function SplashScreen({ onFinish }) {
 
           {/* Footer Section */}
           <View style={styles.footer}>
-            <Text style={styles.taglineMain}>Better events.</Text>
-            <Text style={styles.taglineSub}>Smarter logistics.</Text>
+            <Text style={styles.taglineMain}>Smarter logistics.</Text>
+            <Text style={styles.taglineSub}>Better event execution.</Text>
 
             {/* Glowing Smooth Progress Bar */}
             <View style={styles.progressBarTrack}>
@@ -165,26 +157,19 @@ const styles = StyleSheet.create({
     paddingVertical: 36,
     alignItems: 'center',
   },
-  header: {
-    alignItems: 'center',
-    marginTop: 48,
-  },
-  exactSingleLineWordmark: {
-    width: width * 0.82,
-    height: 48,
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textLilac,
-    letterSpacing: 0.8,
-    marginTop: 6,
-    textAlign: 'center',
-  },
   centerGraphicContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 24,
+  },
+  ambientGlow: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(138, 43, 226, 0.16)',
+    top: -15,
   },
   truckIllustrationBox: {
     alignItems: 'center',
@@ -223,20 +208,20 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   taglineMain: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: COLORS.white,
     letterSpacing: -0.4,
     textAlign: 'center',
   },
   taglineSub: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
-    color: COLORS.white,
+    color: '#C084FC',
     letterSpacing: -0.4,
     textAlign: 'center',
-    marginTop: 3,
-    marginBottom: 30,
+    marginTop: 5,
+    marginBottom: 32,
   },
   progressBarTrack: {
     width: width * 0.5,
