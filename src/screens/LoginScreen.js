@@ -13,11 +13,14 @@ import {
   Animated,
   ActivityIndicator,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
+
+const { width } = Dimensions.get('window');
 
 export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPassword }) {
   const [userId, setUserId] = useState('');
@@ -117,7 +120,11 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
               />
             </View>
 
-            <Text style={styles.brandTitle}>DISTRICT STOCK</Text>
+            <Image
+              source={require('../../assets/district_stock_single_line.png')}
+              style={styles.brandWordmark}
+              resizeMode="contain"
+            />
             <Text style={styles.brandSubtitle}>Event Logistics & Stock Movement</Text>
           </View>
 
@@ -301,19 +308,17 @@ const styles = StyleSheet.create({
     width: 86,
     height: 86,
   },
-  brandTitle: {
-    fontSize: 23,
-    fontWeight: '900',
-    color: COLORS.white,
-    letterSpacing: 2.2,
-    textAlign: 'center',
+  brandWordmark: {
+    width: Math.min(width * 0.65, 240),
+    height: 34,
+    marginBottom: 4,
   },
   brandSubtitle: {
     fontSize: 13,
     fontWeight: '500',
     color: COLORS.textLilac,
     letterSpacing: 0.4,
-    marginTop: 5,
+    marginTop: 4,
     textAlign: 'center',
   },
   loginCard: {
