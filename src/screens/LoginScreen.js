@@ -19,7 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 
-export default function LoginScreen({ onLoginSuccess, onReplaySplash }) {
+export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPassword }) {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -184,6 +184,17 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash }) {
                 <Text style={styles.showButtonText}>
                   {showPassword ? 'HIDE' : 'SHOW'}
                 </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Forgot Password Link */}
+            <View style={styles.forgotPasswordRow}>
+              <TouchableOpacity
+                onPress={onForgotPassword}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
               </TouchableOpacity>
             </View>
 
@@ -369,6 +380,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.textLilac,
     letterSpacing: 0.8,
+  },
+  forgotPasswordRow: {
+    alignItems: 'flex-end',
+    marginBottom: 16,
+    marginTop: -2,
+  },
+  forgotPasswordText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: COLORS.textLilac,
   },
   loginButtonWrapper: {
     marginTop: 10,
