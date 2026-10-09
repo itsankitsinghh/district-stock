@@ -10,7 +10,6 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,38 +24,43 @@ export default function ResetPasswordScreen({ email, onBack, onResetSuccess }) {
   const [focusedInput, setFocusedInput] = useState(null); // 'new' | 'confirm' | null
   const [isLoading, setIsLoading] = useState(false);
 
+  // Inline Validation States
+  const [newPasswordError, setNewPasswordError] = useState('');
+  const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  const [isSuccess, setIsSuccess] = useState(false);
+
   const scrollViewRef = useRef(null);
 
   const handleResetPassword = () => {
+    let hasError = false;
+
     if (!newPassword.trim()) {
-      Alert.alert('Required', 'Please enter a new password.');
-      return;
+      setNewPasswordError('Please enter a new password');
+      hasError = true;
+    } else if (newPassword.length < 8) {
+      setNewPasswordError('Password must be at least 8 characters long');
+      hasError = true;
+    } else {
+      setNewPasswordError('');
     }
-    if (newPassword.length < 8) {
-      Alert.alert('Too Short', 'Password must be at least 8 characters long.');
-      return;
+
+    if (!confirmPassword.trim()) {
+      setConfirmPasswordError('Please confirm your new password');
+      hasError = true;
+    } else if (newPassword !== confirmPassword) {
+      setConfirmPasswordError('Passwords do not match');
+      hasError = true;
+    } else {
+      setConfirmPasswordError('');
     }
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Mismatch', 'New password and confirm password do not match.');
-      return;
-    }
+
+    if (hasError) return;
 
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      Alert.alert(
-        'Password Reset Successful',
-        'Your password has been securely updated. You can now log in.',
-        [
-          {
-            text: 'Login Now',
-            onPress: () => {
-              if (onResetSuccess) onResetSuccess();
-            },
-          },
-        ]
-      );
-    }, 800);
+      setIsSuccess(true);
+    }, 700);
   };
 
   const handleFocusConfirm = () => {
@@ -92,153 +96,213 @@ export default function ResetPasswordScreen({ email, onBack, onResetSuccess }) {
         >
           {/* Shield Badge */}
           <View style={styles.iconContainer}>
-            <View style={styles.iconBadge}>
+            <View style={[styles.iconBadge, isSuccess && styles.iconBadgeSuccess]}>
               <MaterialCommunityIcons
-                name="shield-key-outline"
+                name={isSuccess ? "check-decagram" : "shield-key-outline"}
                 size={38}
-                color={COLORS.textLilac}
+                color={isSuccess ? COLORS.onlineGreen : COLORS.textLilac}
               />
             </View>
           </View>
 
-          {/* Heading */}
-          <Text style={styles.title}>Reset password</Text>
-          <Text style={styles.subtitle}>
-            Create a new password for your account.
-          </Text>
+          {isSuccess ? (
+            /* In-Card Success State */
+            <View style={styles.successBlock}>
+              <Text style={styles.title}>Password Updated!</Text>
+              <Text style={styles.subtitle}>
+                Your account password has been securely reset. You can now login using your new credentials.
+              </Text>
 
-          {/* New Password Input */}
-          <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>New password</Text>
-            <View
-              style={[
-                styles.inputWrapper,
-                focusedInput === 'new' && styles.inputWrapperFocused,
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="lock-outline"
-                size={22}
-                color={focusedInput === 'new' ? COLORS.primaryElectric : COLORS.textLilacSub}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="At least 8 characters"
-                placeholderTextColor={COLORS.textDim}
-                secureTextEntry={!showNewPassword}
-                value={newPassword}
-                onChangeText={setNewPassword}
-                onFocus={() => setFocusedInput('new')}
-                onBlur={() => setFocusedInput(null)}
-              />
               <TouchableOpacity
-                onPress={() => setShowNewPassword(!showNewPassword)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                style={styles.showButton}
+                onPress={() => {
+                  if (onResetSuccess) onResetSuccess();
+                }}
+                activeOpacity={0.85}
+                style={styles.buttonWrapper}
               >
-                <Text style={styles.showButtonText}>
-                  {showNewPassword ? 'HIDE' : 'SHOW'}
-                </Text>
+                <LinearGradient
+                  colors={['#8419F7', '#6F12E0']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.button}
+                >
+                  <Text style={styles.buttonText}>Login Now</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
+          ) : (
+            /* Reset Password Form */
+            <>
+              {/* Heading */}
+              <Text style={styles.title}>Reset password</Text>
+              <Text style={styles.subtitle}>
+                Create a new password for your account.
+              </Text>
 
-            {/* Helper status */}
-            {newPassword.length > 0 && (
-              <View style={styles.helperRow}>
-                <Ionicons
-                  name={isLengthValid ? 'checkmark-circle' : 'alert-circle'}
-                  size={14}
-                  color={isLengthValid ? COLORS.onlineGreen : COLORS.error}
-                />
-                <Text
+              {/* New Password Input */}
+              <View style={styles.inputSection}>
+                <Text style={styles.inputLabel}>New password</Text>
+                <View
                   style={[
-                    styles.helperText,
-                    { color: isLengthValid ? COLORS.onlineGreen : COLORS.textMuted },
+                    styles.inputWrapper,
+                    focusedInput === 'new' && styles.inputWrapperFocused,
+                    !!newPasswordError && styles.inputWrapperError,
                   ]}
                 >
-                  {isLengthValid ? '8+ characters satisfied' : 'Minimum 8 characters needed'}
-                </Text>
-              </View>
-            )}
-          </View>
+                  <MaterialCommunityIcons
+                    name="lock-outline"
+                    size={22}
+                    color={newPasswordError ? COLORS.error : (focusedInput === 'new' ? COLORS.primaryElectric : COLORS.textLilacSub)}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="At least 8 characters"
+                    placeholderTextColor={COLORS.textDim}
+                    secureTextEntry={!showNewPassword}
+                    value={newPassword}
+                    onChangeText={(val) => {
+                      setNewPassword(val);
+                      if (newPasswordError) setNewPasswordError('');
+                    }}
+                    onFocus={() => {
+                      setFocusedInput('new');
+                      if (newPasswordError) setNewPasswordError('');
+                    }}
+                    onBlur={() => setFocusedInput(null)}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowNewPassword(!showNewPassword)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    style={styles.showButton}
+                  >
+                    <Text style={styles.showButtonText}>
+                      {showNewPassword ? 'HIDE' : 'SHOW'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
-          {/* Confirm Password Input */}
-          <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>Confirm password</Text>
-            <View
-              style={[
-                styles.inputWrapper,
-                focusedInput === 'confirm' && styles.inputWrapperFocused,
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="lock-check-outline"
-                size={22}
-                color={focusedInput === 'confirm' ? COLORS.primaryElectric : COLORS.textLilacSub}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Repeat the password"
-                placeholderTextColor={COLORS.textDim}
-                secureTextEntry={!showConfirmPassword}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                onFocus={handleFocusConfirm}
-                onBlur={() => setFocusedInput(null)}
-              />
+                {/* Inline Error Message */}
+                {!!newPasswordError && (
+                  <View style={styles.inlineErrorRow}>
+                    <MaterialCommunityIcons name="alert-circle-outline" size={13} color={COLORS.error} />
+                    <Text style={styles.inlineErrorText}>{newPasswordError}</Text>
+                  </View>
+                )}
+
+                {/* Helper status */}
+                {!newPasswordError && newPassword.length > 0 && (
+                  <View style={styles.helperRow}>
+                    <Ionicons
+                      name={isLengthValid ? 'checkmark-circle' : 'alert-circle'}
+                      size={14}
+                      color={isLengthValid ? COLORS.onlineGreen : COLORS.error}
+                    />
+                    <Text
+                      style={[
+                        styles.helperText,
+                        { color: isLengthValid ? COLORS.onlineGreen : COLORS.textMuted },
+                      ]}
+                    >
+                      {isLengthValid ? '8+ characters satisfied' : 'Minimum 8 characters needed'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Confirm Password Input */}
+              <View style={styles.inputSection}>
+                <Text style={styles.inputLabel}>Confirm password</Text>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    focusedInput === 'confirm' && styles.inputWrapperFocused,
+                    !!confirmPasswordError && styles.inputWrapperError,
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="lock-check-outline"
+                    size={22}
+                    color={confirmPasswordError ? COLORS.error : (focusedInput === 'confirm' ? COLORS.primaryElectric : COLORS.textLilacSub)}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Repeat the password"
+                    placeholderTextColor={COLORS.textDim}
+                    secureTextEntry={!showConfirmPassword}
+                    value={confirmPassword}
+                    onChangeText={(val) => {
+                      setConfirmPassword(val);
+                      if (confirmPasswordError) setConfirmPasswordError('');
+                    }}
+                    onFocus={() => {
+                      handleFocusConfirm();
+                      if (confirmPasswordError) setConfirmPasswordError('');
+                    }}
+                    onBlur={() => setFocusedInput(null)}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    style={styles.showButton}
+                  >
+                    <Text style={styles.showButtonText}>
+                      {showConfirmPassword ? 'HIDE' : 'SHOW'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Inline Error Message */}
+                {!!confirmPasswordError && (
+                  <View style={styles.inlineErrorRow}>
+                    <MaterialCommunityIcons name="alert-circle-outline" size={13} color={COLORS.error} />
+                    <Text style={styles.inlineErrorText}>{confirmPasswordError}</Text>
+                  </View>
+                )}
+
+                {/* Match helper */}
+                {!confirmPasswordError && confirmPassword.length > 0 && (
+                  <View style={styles.helperRow}>
+                    <Ionicons
+                      name={isMatch ? 'checkmark-circle' : 'close-circle'}
+                      size={14}
+                      color={isMatch ? COLORS.onlineGreen : COLORS.error}
+                    />
+                    <Text
+                      style={[
+                        styles.helperText,
+                        { color: isMatch ? COLORS.onlineGreen : COLORS.error },
+                      ]}
+                    >
+                      {isMatch ? 'Passwords match' : 'Passwords do not match'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Submit Button */}
               <TouchableOpacity
-                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                style={styles.showButton}
+                onPress={handleResetPassword}
+                activeOpacity={0.85}
+                disabled={isLoading}
+                style={styles.buttonWrapper}
               >
-                <Text style={styles.showButtonText}>
-                  {showConfirmPassword ? 'HIDE' : 'SHOW'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Match helper */}
-            {confirmPassword.length > 0 && (
-              <View style={styles.helperRow}>
-                <Ionicons
-                  name={isMatch ? 'checkmark-circle' : 'close-circle'}
-                  size={14}
-                  color={isMatch ? COLORS.onlineGreen : COLORS.error}
-                />
-                <Text
-                  style={[
-                    styles.helperText,
-                    { color: isMatch ? COLORS.onlineGreen : COLORS.error },
-                  ]}
+                <LinearGradient
+                  colors={['#8419F7', '#6F12E0']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.button}
                 >
-                  {isMatch ? 'Passwords match' : 'Passwords do not match'}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* Submit Button */}
-          <TouchableOpacity
-            onPress={handleResetPassword}
-            activeOpacity={0.85}
-            disabled={isLoading}
-            style={styles.buttonWrapper}
-          >
-            <LinearGradient
-              colors={['#8419F7', '#6F12E0']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.button}
-            >
-              {isLoading ? (
-                <ActivityIndicator color={COLORS.white} size="small" />
-              ) : (
-                <Text style={styles.buttonText}>Reset password</Text>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
+                  {isLoading ? (
+                    <ActivityIndicator color={COLORS.white} size="small" />
+                  ) : (
+                    <Text style={styles.buttonText}>Reset password</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -328,6 +392,29 @@ const styles = StyleSheet.create({
   inputWrapperFocused: {
     borderColor: COLORS.borderFocus,
     backgroundColor: '#201642',
+  },
+  inputWrapperError: {
+    borderColor: COLORS.error,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
+  inlineErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    paddingLeft: 4,
+  },
+  inlineErrorText: {
+    color: COLORS.error,
+    fontSize: 11.5,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  iconBadgeSuccess: {
+    borderColor: 'rgba(16, 185, 129, 0.5)',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+  },
+  successBlock: {
+    width: '100%',
   },
   inputIcon: {
     marginRight: 12,

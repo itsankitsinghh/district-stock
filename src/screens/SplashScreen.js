@@ -184,17 +184,10 @@ export default function SplashScreen({ onFinish }) {
         style={StyleSheet.absoluteFillObject}
       />
 
-      {/* 2. Soft Ambient Radial Light Halos */}
+      {/* 2. Soft Ambient Radial Light Halo */}
       <Animated.View
         style={[
           styles.ambientTopGlow,
-          { opacity: ambientGlowPulse },
-        ]}
-        pointerEvents="none"
-      />
-      <Animated.View
-        style={[
-          styles.ambientBottomGlow,
           { opacity: ambientGlowPulse },
         ]}
         pointerEvents="none"
@@ -297,15 +290,6 @@ const styles = StyleSheet.create({
     height: 180,
     borderRadius: width * 0.35,
     backgroundColor: 'rgba(139, 92, 246, 0.22)',
-  },
-  ambientBottomGlow: {
-    position: 'absolute',
-    bottom: height * 0.10,
-    left: width * 0.05,
-    width: width * 0.9,
-    height: 240,
-    borderRadius: width * 0.45,
-    backgroundColor: 'rgba(139, 92, 246, 0.28)',
   },
   content: {
     flex: 1,

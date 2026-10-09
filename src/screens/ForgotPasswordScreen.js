@@ -10,7 +10,6 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,35 +18,31 @@ import { COLORS } from '../theme/colors';
 
 export default function ForgotPasswordScreen({ onBackToLogin, onCodeSent }) {
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const handleSendLink = () => {
     if (!email.trim()) {
-      Alert.alert('Required', 'Please enter your registered email address.');
+      setEmailError('Please enter your registered email address');
       return;
     }
-    if (!email.includes('@')) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+    if (!email.includes('@') || !email.includes('.')) {
+      setEmailError('Please enter a valid email address (e.g. name@company.com)');
       return;
     }
 
+    setEmailError('');
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      Alert.alert(
-        'Reset Link Sent',
-        `A verification code has been dispatched to ${email}.`,
-        [
-          {
-            text: 'Proceed to Reset',
-            onPress: () => {
-              if (onCodeSent) onCodeSent(email);
-            },
-          },
-        ]
-      );
-    }, 800);
+      setIsSuccess(true);
+    }, 700);
+  };
+
+  const handleProceed = () => {
+    if (onCodeSent) onCodeSent(email);
   };
 
   return (
@@ -76,70 +71,120 @@ export default function ForgotPasswordScreen({ onBackToLogin, onCodeSent }) {
         >
           {/* Lock / Key Icon Badge */}
           <View style={styles.iconContainer}>
-            <View style={styles.iconBadge}>
+            <View style={[styles.iconBadge, isSuccess && styles.iconBadgeSuccess]}>
               <MaterialCommunityIcons
-                name="lock-reset"
+                name={isSuccess ? "check-decagram" : "lock-reset"}
                 size={38}
-                color={COLORS.textLilac}
+                color={isSuccess ? COLORS.onlineGreen : COLORS.textLilac}
               />
             </View>
           </View>
 
-          {/* Heading Section */}
-          <Text style={styles.title}>Forgot password</Text>
-          <Text style={styles.subtitle}>
-            Enter your email address and we will send you a reset link.
-          </Text>
+          {isSuccess ? (
+            /* In-Card Success State */
+            <View style={styles.successBlock}>
+              <Text style={styles.title}>Code Dispatched!</Text>
+              <Text style={styles.subtitle}>
+                A 6-digit recovery verification code has been dispatched to{' '}
+                <Text style={styles.emailHighlight}>{email}</Text>.
+              </Text>
 
-          {/* Email Input Field */}
-          <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>Email address</Text>
-            <View
-              style={[
-                styles.inputWrapper,
-                isFocused && styles.inputWrapperFocused,
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="email-outline"
-                size={22}
-                color={isFocused ? COLORS.primaryElectric : COLORS.textLilacSub}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="name@company.com"
-                placeholderTextColor={COLORS.textDim}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={email}
-                onChangeText={setEmail}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
-              />
+              <TouchableOpacity
+                onPress={handleProceed}
+                activeOpacity={0.85}
+                style={styles.buttonWrapper}
+              >
+                <LinearGradient
+                  colors={['#8419F7', '#6F12E0']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.button}
+                >
+                  <Text style={styles.buttonText}>Proceed to Reset Password</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setIsSuccess(false)}
+                style={styles.backToLoginWrapper}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.resendText}>Use a different email</Text>
+              </TouchableOpacity>
             </View>
-          </View>
+          ) : (
+            /* Input Form State */
+            <>
+              {/* Heading Section */}
+              <Text style={styles.title}>Forgot password</Text>
+              <Text style={styles.subtitle}>
+                Enter your email address and we will send you a reset link.
+              </Text>
 
-          {/* Primary Action Button */}
-          <TouchableOpacity
-            onPress={handleSendLink}
-            activeOpacity={0.85}
-            disabled={isLoading}
-            style={styles.buttonWrapper}
-          >
-            <LinearGradient
-              colors={['#8419F7', '#6F12E0']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.button}
-            >
-              {isLoading ? (
-                <ActivityIndicator color={COLORS.white} size="small" />
-              ) : (
-                <Text style={styles.buttonText}>Send reset link</Text>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
+              {/* Email Input Field */}
+              <View style={styles.inputSection}>
+                <Text style={styles.inputLabel}>Email address</Text>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    isFocused && styles.inputWrapperFocused,
+                    !!emailError && styles.inputWrapperError,
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="email-outline"
+                    size={22}
+                    color={emailError ? COLORS.error : (isFocused ? COLORS.primaryElectric : COLORS.textLilacSub)}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="name@company.com"
+                    placeholderTextColor={COLORS.textDim}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={email}
+                    onChangeText={(val) => {
+                      setEmail(val);
+                      if (emailError) setEmailError('');
+                    }}
+                    onFocus={() => {
+                      setIsFocused(true);
+                      if (emailError) setEmailError('');
+                    }}
+                    onBlur={() => setIsFocused(false)}
+                  />
+                </View>
+                {!!emailError && (
+                  <View style={styles.inlineErrorRow}>
+                    <MaterialCommunityIcons name="alert-circle-outline" size={13} color={COLORS.error} />
+                    <Text style={styles.inlineErrorText}>{emailError}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Primary Action Button */}
+              <TouchableOpacity
+                onPress={handleSendLink}
+                activeOpacity={0.85}
+                disabled={isLoading}
+                style={styles.buttonWrapper}
+              >
+                <LinearGradient
+                  colors={['#8419F7', '#6F12E0']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.button}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color={COLORS.white} size="small" />
+                  ) : (
+                    <Text style={styles.buttonText}>Send reset link</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </>
+          )}
 
           {/* Back to Login Link */}
           <TouchableOpacity
@@ -238,6 +283,39 @@ const styles = StyleSheet.create({
   inputWrapperFocused: {
     borderColor: COLORS.borderFocus,
     backgroundColor: '#201642',
+  },
+  inputWrapperError: {
+    borderColor: COLORS.error,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
+  inlineErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    paddingLeft: 4,
+  },
+  inlineErrorText: {
+    color: COLORS.error,
+    fontSize: 11.5,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  iconBadgeSuccess: {
+    borderColor: 'rgba(16, 185, 129, 0.5)',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+  },
+  successBlock: {
+    width: '100%',
+  },
+  emailHighlight: {
+    color: COLORS.textLilac,
+    fontWeight: '700',
+  },
+  resendText: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: COLORS.textLilac,
+    textAlign: 'center',
   },
   inputIcon: {
     marginRight: 12,

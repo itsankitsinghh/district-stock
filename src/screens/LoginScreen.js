@@ -12,7 +12,6 @@ import {
   ScrollView,
   Animated,
   ActivityIndicator,
-  Alert,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,6 +31,11 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
 
   // Network connection status: 'online' | 'weak' | 'offline'
   const [networkStatus, setNetworkStatus] = useState('online');
+
+  // Inline Validation & Alert States
+  const [userIdError, setUserIdError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [offlineError, setOfflineError] = useState('');
 
   const scrollViewRef = useRef(null);
 
@@ -88,6 +92,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
         } else {
           setNetworkStatus('online');
         }
+        setOfflineError('');
       } catch (err) {
         if (isMounted) {
           setNetworkStatus('offline');
@@ -108,22 +113,30 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
   }, []);
 
   const handleLogin = () => {
+    let hasError = false;
+
     if (networkStatus === 'offline') {
-      Alert.alert(
-        'Terminal Offline',
-        'No network connection detected. Please enable mobile data or Wi-Fi to authenticate.'
-      );
+      setOfflineError('Terminal is offline. Please enable mobile data or Wi-Fi to authenticate.');
       return;
+    } else {
+      setOfflineError('');
     }
 
     if (!userId.trim()) {
-      Alert.alert('Required', 'Please enter your User ID.');
-      return;
+      setUserIdError('Please enter your User ID');
+      hasError = true;
+    } else {
+      setUserIdError('');
     }
+
     if (!password.trim()) {
-      Alert.alert('Required', 'Please enter your Password.');
-      return;
+      setPasswordError('Please enter your Password');
+      hasError = true;
+    } else {
+      setPasswordError('');
     }
+
+    if (hasError) return;
 
     setIsLoading(true);
     setTimeout(() => {
@@ -148,20 +161,6 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-
-      {/* Subtle top bar for splash replay */}
-      <View style={styles.topControlRow}>
-        {onReplaySplash && (
-          <TouchableOpacity
-            onPress={onReplaySplash}
-            style={styles.replayButton}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="sparkles-outline" size={13} color={COLORS.textLilac} />
-            <Text style={styles.replayText}>Replay Splash</Text>
-          </TouchableOpacity>
-        )}
-      </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -191,63 +190,101 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
               Enter authorised user credentials to continue.
             </Text>
 
-            {/* User ID Field */}
-            <View
-              style={[
-                styles.inputWrapper,
-                focusedInput === 'user' && styles.inputWrapperFocused,
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="account"
-                size={22}
-                color={focusedInput === 'user' ? COLORS.primaryElectric : COLORS.textLilacSub}
-                style={styles.inputLeadingIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="User ID"
-                placeholderTextColor={COLORS.textDim}
-                value={userId}
-                onChangeText={setUserId}
-                autoCapitalize="none"
-                onFocus={() => setFocusedInput('user')}
-                onBlur={() => setFocusedInput(null)}
-              />
+            {/* Inline Offline Alert Banner */}
+            {!!offlineError && (
+              <View style={styles.alertBanner}>
+                <MaterialCommunityIcons name="wifi-off" size={16} color={COLORS.error} />
+                <Text style={styles.alertBannerText}>{offlineError}</Text>
+              </View>
+            )}
+
+            {/* User ID Field Container */}
+            <View style={styles.fieldContainer}>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  focusedInput === 'user' && styles.inputWrapperFocused,
+                  !!userIdError && styles.inputWrapperError,
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="account"
+                  size={22}
+                  color={userIdError ? COLORS.error : (focusedInput === 'user' ? COLORS.primaryElectric : COLORS.textLilacSub)}
+                  style={styles.inputLeadingIcon}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="User ID"
+                  placeholderTextColor={COLORS.textDim}
+                  value={userId}
+                  onChangeText={(val) => {
+                    setUserId(val);
+                    if (userIdError) setUserIdError('');
+                  }}
+                  autoCapitalize="none"
+                  onFocus={() => {
+                    setFocusedInput('user');
+                    if (userIdError) setUserIdError('');
+                  }}
+                  onBlur={() => setFocusedInput(null)}
+                />
+              </View>
+              {!!userIdError && (
+                <View style={styles.inlineErrorRow}>
+                  <MaterialCommunityIcons name="alert-circle-outline" size={13} color={COLORS.error} />
+                  <Text style={styles.inlineErrorText}>{userIdError}</Text>
+                </View>
+              )}
             </View>
 
-            {/* Password Field */}
-            <View
-              style={[
-                styles.inputWrapper,
-                focusedInput === 'pass' && styles.inputWrapperFocused,
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="lock"
-                size={22}
-                color={focusedInput === 'pass' ? COLORS.primaryElectric : COLORS.textLilacSub}
-                style={styles.inputLeadingIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor={COLORS.textDim}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                onFocus={handleFocusPassword}
-                onBlur={() => setFocusedInput(null)}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                style={styles.showButton}
+            {/* Password Field Container */}
+            <View style={styles.fieldContainer}>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  focusedInput === 'pass' && styles.inputWrapperFocused,
+                  !!passwordError && styles.inputWrapperError,
+                ]}
               >
-                <Text style={styles.showButtonText}>
-                  {showPassword ? 'HIDE' : 'SHOW'}
-                </Text>
-              </TouchableOpacity>
+                <MaterialCommunityIcons
+                  name="lock"
+                  size={22}
+                  color={passwordError ? COLORS.error : (focusedInput === 'pass' ? COLORS.primaryElectric : COLORS.textLilacSub)}
+                  style={styles.inputLeadingIcon}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor={COLORS.textDim}
+                  value={password}
+                  onChangeText={(val) => {
+                    setPassword(val);
+                    if (passwordError) setPasswordError('');
+                  }}
+                  secureTextEntry={!showPassword}
+                  onFocus={() => {
+                    handleFocusPassword();
+                    if (passwordError) setPasswordError('');
+                  }}
+                  onBlur={() => setFocusedInput(null)}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={styles.showButton}
+                >
+                  <Text style={styles.showButtonText}>
+                    {showPassword ? 'HIDE' : 'SHOW'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {!!passwordError && (
+                <View style={styles.inlineErrorRow}>
+                  <MaterialCommunityIcons name="alert-circle-outline" size={13} color={COLORS.error} />
+                  <Text style={styles.inlineErrorText}>{passwordError}</Text>
+                </View>
+              )}
             </View>
 
             {/* Forgot Password Link */}
@@ -330,34 +367,50 @@ const styles = StyleSheet.create({
   flexOne: {
     flex: 1,
   },
-  topControlRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 8 : 4,
-  },
-  replayButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(123, 28, 240, 0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(123, 28, 240, 0.3)',
-  },
-  replayText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: COLORS.textLilac,
-    marginLeft: 5,
-  },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 22,
-    paddingTop: 8,
+    paddingTop: 20,
     paddingBottom: 40,
     justifyContent: 'center',
+  },
+  alertBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  alertBannerText: {
+    color: COLORS.error,
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 16,
+  },
+  fieldContainer: {
+    marginBottom: 14,
+  },
+  inlineErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 5,
+    paddingLeft: 4,
+  },
+  inlineErrorText: {
+    color: COLORS.error,
+    fontSize: 11.5,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  inputWrapperError: {
+    borderColor: COLORS.error,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
   },
   brandContainer: {
     alignItems: 'center',
