@@ -56,104 +56,114 @@ export default function SplashScreen({ onFinish }) {
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
-  const logoPulse = useRef(new Animated.Value(1)).current;
-  const pinPulse = useRef(new Animated.Value(0)).current;
-  const pinBob = useRef(new Animated.Value(0)).current;
-  const textPulse = useRef(new Animated.Value(0.6)).current;
+  const logoScale = useRef(new Animated.Value(1)).current;
+  const heroFloat = useRef(new Animated.Value(0)).current;
+  const textPulse = useRef(new Animated.Value(0.55)).current;
+  const ambientGlowPulse = useRef(new Animated.Value(0.4)).current;
 
-  // Track finished state to prevent multiple calls
+  // Track finished state to prevent multiple triggers
   const hasFinishedRef = useRef(false);
 
   const finishFlow = () => {
     if (hasFinishedRef.current) return;
     hasFinishedRef.current = true;
-    if (onFinish) onFinish();
+
+    // Smooth exit fade
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      if (onFinish) onFinish();
+    });
   };
 
   useEffect(() => {
-    // 1. Screen fade-in
+    // 1. Entrance fade-in
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 450,
+      duration: 500,
       useNativeDriver: true,
     }).start();
 
-    // 2. Subtle logo breathing neon pulse
+    // 2. Subtle logo breathing pulse
     Animated.loop(
       Animated.sequence([
-        Animated.timing(logoPulse, {
+        Animated.timing(logoScale, {
           toValue: 1.03,
-          duration: 1600,
+          duration: 1700,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
-        Animated.timing(logoPulse, {
+        Animated.timing(logoScale, {
           toValue: 0.98,
-          duration: 1600,
+          duration: 1700,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
       ])
     ).start();
 
-    // 3. Location pins vertical float & ripple
+    // 3. Smooth floating hover animation for the 3D Hero Artwork
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pinBob, {
-          toValue: -5,
-          duration: 1200,
+        Animated.timing(heroFloat, {
+          toValue: -6,
+          duration: 1900,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
-        Animated.timing(pinBob, {
-          toValue: 5,
-          duration: 1200,
+        Animated.timing(heroFloat, {
+          toValue: 6,
+          duration: 1900,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
       ])
     ).start();
 
+    // 4. Ambient background glow breathing
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pinPulse, {
-          toValue: 1,
-          duration: 1500,
-          easing: Easing.out(Easing.ease),
+        Animated.timing(ambientGlowPulse, {
+          toValue: 0.75,
+          duration: 1800,
+          easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-        Animated.timing(pinPulse, {
-          toValue: 0,
-          duration: 0,
+        Animated.timing(ambientGlowPulse, {
+          toValue: 0.35,
+          duration: 1800,
+          easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
       ])
     ).start();
 
-    // 4. "Setting things up..." text opacity breathing
+    // 5. "Setting things up..." text opacity breathing
     Animated.loop(
       Animated.sequence([
         Animated.timing(textPulse, {
           toValue: 1,
-          duration: 900,
+          duration: 850,
           useNativeDriver: true,
         }),
         Animated.timing(textPulse, {
           toValue: 0.45,
-          duration: 900,
+          duration: 850,
           useNativeDriver: true,
         }),
       ])
     ).start();
 
-    // 5. High-tech smooth progress bar (loads smoothly over 2.8s)
+    // 6. Smooth progress bar loading over 2.8s
     Animated.timing(progressAnim, {
       toValue: 1,
       duration: 2800,
-      easing: Easing.bezier(0.25, 0.1, 0.25, 1.0),
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start(() => {
-      setTimeout(finishFlow, 250);
+      setTimeout(finishFlow, 180);
     });
   }, []);
 
@@ -162,97 +172,54 @@ export default function SplashScreen({ onFinish }) {
     outputRange: [0, width * 0.64],
   });
 
-  const pinScale = pinPulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.8, 1.8],
-  });
-
-  const pinOpacity = pinPulse.interpolate({
-    inputRange: [0, 0.7, 1],
-    outputRange: [0.85, 0.4, 0],
-  });
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* 1. Base Gradient Canvas */}
+      {/* 1. Deep Midnight Cyberpunk Canvas */}
       <LinearGradient
-        colors={['#060214', '#0A0322', '#060215']}
+        colors={['#060216', '#0E0426', '#050114']}
         start={{ x: 0.3, y: 0 }}
         end={{ x: 0.7, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
 
-      {/* 2. Top Silky 3D Ribbon Artwork */}
-      <Image
-        source={require('../../assets/splash_top_ribbon_clean.png')}
-        style={styles.topRibbonArtwork}
-        resizeMode="cover"
+      {/* 2. Soft Ambient Radial Light Halos */}
+      <Animated.View
+        style={[
+          styles.ambientTopGlow,
+          { opacity: ambientGlowPulse },
+        ]}
+        pointerEvents="none"
+      />
+      <Animated.View
+        style={[
+          styles.ambientBottomGlow,
+          { opacity: ambientGlowPulse },
+        ]}
+        pointerEvents="none"
       />
 
-      {/* 3. Bottom 3D Ground Scene Artwork (Truck, Forklift, Stage, Floor Reflections) */}
-      <View style={styles.groundSceneWrapper} pointerEvents="none">
-        <Image
-          source={require('../../assets/splash_ground_scene_clean.png')}
-          style={styles.groundSceneArtwork}
-          resizeMode="cover"
-        />
-
-        {/* Animated Holographic Waypoint Pins over Truck & Forklift */}
-        <Animated.View
-          style={[
-            styles.waypointPin,
-            styles.pinTruck,
-            { transform: [{ translateY: pinBob }] },
-          ]}
-        >
-          <Animated.View
-            style={[
-              styles.pinHalo,
-              { transform: [{ scale: pinScale }], opacity: pinOpacity },
-            ]}
-          />
-          <MaterialCommunityIcons name="map-marker" size={24} color="#C084FC" />
-        </Animated.View>
-
-        <Animated.View
-          style={[
-            styles.waypointPin,
-            styles.pinForklift,
-            { transform: [{ translateY: pinBob }] },
-          ]}
-        >
-          <Animated.View
-            style={[
-              styles.pinHalo,
-              { transform: [{ scale: pinScale }], opacity: pinOpacity },
-            ]}
-          />
-          <MaterialCommunityIcons name="map-marker" size={20} color="#E879F9" />
-        </Animated.View>
-      </View>
-
-      {/* 4. Foreground Content */}
-      <Animated.View style={[styles.foregroundContainer, { opacity: fadeAnim }]}>
-        {/* Top Control Bar: Skip button at top right */}
+      {/* 3. Main Screen Content */}
+      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+        {/* Top Control Row: Skip Button with glass capsule */}
         <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 14) }]}>
           <TouchableOpacity
             onPress={finishFlow}
             style={styles.skipButton}
             activeOpacity={0.7}
-            hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
+            hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
           >
             <Text style={styles.skipText}>Skip</Text>
-            <Ionicons name="chevron-forward" size={13} color="rgba(216, 180, 254, 0.9)" />
+            <Ionicons name="chevron-forward" size={13} color="#C084FC" />
           </TouchableOpacity>
         </View>
 
-        {/* Brand Header: Glowing Neon Wordmark & Subtitle */}
+        {/* Brand Header: 3D Neon Wordmark & Subtitle */}
         <Animated.View
           style={[
             styles.header,
-            { transform: [{ scale: logoPulse }] },
+            { transform: [{ scale: logoScale }] },
           ]}
         >
           <Image
@@ -272,7 +239,7 @@ export default function SplashScreen({ onFinish }) {
                 <View style={styles.featureIconCircle}>
                   <MaterialCommunityIcons
                     name={item.icon}
-                    size={24}
+                    size={22}
                     color="#C084FC"
                   />
                 </View>
@@ -282,8 +249,19 @@ export default function SplashScreen({ onFinish }) {
           </View>
         </View>
 
-        {/* Spacer to allow 3D Ground Scene to shine in middle-lower screen */}
-        <View style={styles.sceneSpacer} />
+        {/* Lower Section: 3D Event Logistics Hero Artwork (Stage, Trucks, Forklift, Grid) */}
+        <Animated.View
+          style={[
+            styles.heroContainer,
+            { transform: [{ translateY: heroFloat }] },
+          ]}
+        >
+          <Image
+            source={require('../../assets/event_logistics_hero_hires.png')}
+            style={styles.heroArtwork}
+            resizeMode="contain"
+          />
+        </Animated.View>
 
         {/* Footer: Illuminated Progress Bar & Status Text */}
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
@@ -309,92 +287,73 @@ export default function SplashScreen({ onFinish }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#060214',
+    backgroundColor: '#060216',
   },
-  topRibbonArtwork: {
+  ambientTopGlow: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    width: width,
-    height: height * 0.26,
+    top: -40,
+    left: width * 0.15,
+    width: width * 0.7,
+    height: 180,
+    borderRadius: width * 0.35,
+    backgroundColor: 'rgba(139, 92, 246, 0.22)',
   },
-  groundSceneWrapper: {
+  ambientBottomGlow: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    width: width,
-    height: height * 0.44,
+    bottom: height * 0.14,
+    left: width * 0.1,
+    width: width * 0.8,
+    height: 160,
+    borderRadius: width * 0.4,
+    backgroundColor: 'rgba(124, 58, 237, 0.25)',
   },
-  groundSceneArtwork: {
-    width: '100%',
-    height: '100%',
-  },
-  waypointPin: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinTruck: {
-    left: width * 0.28,
-    top: '24%',
-  },
-  pinForklift: {
-    left: width * 0.49,
-    top: '36%',
-  },
-  pinHalo: {
-    position: 'absolute',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(192, 132, 252, 0.45)',
-  },
-  foregroundContainer: {
+  content: {
     flex: 1,
     justifyContent: 'space-between',
-    zIndex: 10,
+    alignItems: 'center',
   },
   topBar: {
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    paddingHorizontal: 22,
-    zIndex: 20,
+    paddingHorizontal: 20,
+    zIndex: 10,
   },
   skipButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(192, 132, 252, 0.25)',
   },
   skipText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '600',
-    color: 'rgba(216, 180, 254, 0.9)',
-    marginRight: 2,
+    color: '#E9D5FF',
+    marginRight: 3,
     letterSpacing: 0.3,
   },
   header: {
     alignItems: 'center',
-    marginTop: -4,
-    paddingHorizontal: 20,
+    marginTop: -2,
   },
   neonWordmark: {
-    width: Math.min(width * 0.46, 185),
-    height: Math.min(height * 0.11, 95),
+    width: Math.min(width * 0.44, 168),
+    height: Math.min(height * 0.1, 84),
     marginBottom: 4,
   },
   brandSubtitleRow1: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: '700',
     color: '#C084FC',
     letterSpacing: 2.4,
     textAlign: 'center',
   },
   brandSubtitleRow2: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: '700',
     color: '#C084FC',
     letterSpacing: 2.4,
@@ -404,7 +363,7 @@ const styles = StyleSheet.create({
   featuresSection: {
     width: '100%',
     paddingHorizontal: 16,
-    marginTop: 8,
+    marginVertical: 4,
   },
   featuresGrid: {
     flexDirection: 'row',
@@ -415,33 +374,41 @@ const styles = StyleSheet.create({
   featureItem: {
     width: '31%',
     alignItems: 'center',
-    marginBottom: 16,
+    marginVertical: 6,
   },
   featureIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(38, 12, 72, 0.72)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(38, 14, 76, 0.78)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.2,
-    borderColor: 'rgba(192, 132, 252, 0.3)',
-    marginBottom: 6,
+    borderColor: 'rgba(192, 132, 252, 0.32)',
+    marginBottom: 5,
     shadowColor: '#8B5CF6',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.45,
     shadowRadius: 8,
-    elevation: 5,
+    elevation: 4,
   },
   featureItemTitle: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '600',
     color: '#E9D5FF',
     textAlign: 'center',
-    lineHeight: 15,
+    lineHeight: 14,
   },
-  sceneSpacer: {
-    flex: 1,
+  heroContainer: {
+    width: width,
+    height: Math.min(height * 0.32, 250),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 4,
+  },
+  heroArtwork: {
+    width: '94%',
+    height: '100%',
   },
   footer: {
     width: '100%',
@@ -451,13 +418,13 @@ const styles = StyleSheet.create({
   progressBarTrack: {
     width: width * 0.64,
     height: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     borderRadius: 3,
     overflow: 'hidden',
     marginBottom: 10,
     shadowColor: '#C084FC',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
+    shadowOpacity: 0.7,
     shadowRadius: 8,
   },
   progressBarFill: {
@@ -471,7 +438,7 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '500',
-    color: 'rgba(216, 180, 254, 0.82)',
+    color: 'rgba(216, 180, 254, 0.85)',
     letterSpacing: 0.4,
     textAlign: 'center',
   },
