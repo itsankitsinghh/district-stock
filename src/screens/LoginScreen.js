@@ -112,14 +112,6 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
         >
           {/* Header Brand Section */}
           <View style={styles.brandContainer}>
-            <View style={styles.logoWrapper}>
-              <Image
-                source={require('../../assets/district_logo.png')}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
-            </View>
-
             <Image
               source={require('../../assets/district_stock_single_line.png')}
               style={styles.brandWordmark}
@@ -294,32 +286,19 @@ const styles = StyleSheet.create({
   },
   brandContainer: {
     alignItems: 'center',
-    marginBottom: 24,
-    marginTop: 4,
-  },
-  logoWrapper: {
-    marginBottom: 12,
-    shadowColor: COLORS.primaryGlow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    elevation: 10,
-  },
-  logoImage: {
-    width: 84,
-    height: 84,
+    marginBottom: 26,
+    marginTop: -10,
   },
   brandWordmark: {
-    width: Math.min(width * 0.65, 230),
-    height: 32,
-    marginBottom: 4,
+    width: Math.min(width * 0.72, 250),
+    height: 36,
+    marginBottom: 6,
   },
   brandSubtitle: {
     fontSize: 12.5,
     fontWeight: '500',
     color: COLORS.textLilac,
-    letterSpacing: 0.4,
-    marginTop: 4,
+    letterSpacing: 0.5,
     textAlign: 'center',
   },
   loginCard: {

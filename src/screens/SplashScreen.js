@@ -300,12 +300,12 @@ const styles = StyleSheet.create({
   },
   ambientBottomGlow: {
     position: 'absolute',
-    bottom: height * 0.14,
-    left: width * 0.1,
-    width: width * 0.8,
-    height: 160,
-    borderRadius: width * 0.4,
-    backgroundColor: 'rgba(124, 58, 237, 0.25)',
+    bottom: height * 0.10,
+    left: width * 0.05,
+    width: width * 0.9,
+    height: 240,
+    borderRadius: width * 0.45,
+    backgroundColor: 'rgba(139, 92, 246, 0.28)',
   },
   content: {
     flex: 1,
@@ -401,13 +401,14 @@ const styles = StyleSheet.create({
   },
   heroContainer: {
     width: width,
-    height: Math.min(height * 0.32, 250),
+    flex: 1,
+    maxHeight: Math.min(height * 0.45, 380),
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: 4,
   },
   heroArtwork: {
-    width: '94%',
+    width: '100%',
     height: '100%',
   },
   footer: {
