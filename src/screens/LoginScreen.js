@@ -112,20 +112,13 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
         >
           {/* Header Brand Section */}
           <View style={styles.brandContainer}>
-            <View style={styles.logoWrapper}>
-              <Image
-                source={require('../../assets/district_logo.png')}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
-            </View>
-
             <Image
-              source={require('../../assets/district_stock_single_line.png')}
-              style={styles.brandWordmark}
+              source={require('../../assets/district_stock_neon_wordmark.png')}
+              style={styles.neonWordmark}
               resizeMode="contain"
             />
-            <Text style={styles.brandSubtitle}>Event Logistics & Stock Movement</Text>
+            <Text style={styles.brandSubtitleRow1}>EVENT LOGISTICS &</Text>
+            <Text style={styles.brandSubtitleRow2}>STOCK MOVEMENT</Text>
           </View>
 
           {/* Login Card */}
@@ -294,32 +287,28 @@ const styles = StyleSheet.create({
   },
   brandContainer: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
+    marginTop: 4,
   },
-  logoWrapper: {
-    marginBottom: 14,
-    shadowColor: COLORS.primaryGlow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    elevation: 10,
-  },
-  logoImage: {
-    width: 86,
-    height: 86,
-  },
-  brandWordmark: {
-    width: Math.min(width * 0.65, 240),
-    height: 34,
+  neonWordmark: {
+    width: 146,
+    height: 84,
     marginBottom: 4,
   },
-  brandSubtitle: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: COLORS.textLilac,
-    letterSpacing: 0.4,
-    marginTop: 4,
+  brandSubtitleRow1: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(192, 132, 252, 0.85)',
+    letterSpacing: 2.2,
     textAlign: 'center',
+  },
+  brandSubtitleRow2: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(192, 132, 252, 0.85)',
+    letterSpacing: 2.2,
+    textAlign: 'center',
+    marginTop: 2,
   },
   loginCard: {
     backgroundColor: COLORS.cardBg,
