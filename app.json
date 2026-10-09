@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.districtstock.app",
       "adaptiveIcon": {
         "backgroundColor": "#5213C2",
         "foregroundImage": "./assets/android-icon-foreground.png",
