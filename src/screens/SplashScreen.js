@@ -58,7 +58,11 @@ export default function SplashScreen({ onFinish }) {
   const stepOpacity = useRef(new Animated.Value(1)).current;
   const heroFloat = useRef(new Animated.Value(0)).current;
   const pedestalFloat = useRef(new Animated.Value(0)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  // 3-Part Common Segmented Loading Animations
+  const seg1Anim = useRef(new Animated.Value(0)).current;
+  const seg2Anim = useRef(new Animated.Value(0)).current;
+  const seg3Anim = useRef(new Animated.Value(0)).current;
 
   // Track finished state to prevent multiple triggers
   const hasFinishedRef = useRef(false);
@@ -73,7 +77,7 @@ export default function SplashScreen({ onFinish }) {
     // 1. Initial screen fade-in
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 600,
+      duration: 500,
       useNativeDriver: true,
     }).start();
 
@@ -99,13 +103,13 @@ export default function SplashScreen({ onFinish }) {
     Animated.loop(
       Animated.sequence([
         Animated.timing(pedestalFloat, {
-          toValue: -5,
+          toValue: -6,
           duration: 1400,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(pedestalFloat, {
-          toValue: 5,
+          toValue: 6,
           duration: 1400,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
@@ -113,98 +117,138 @@ export default function SplashScreen({ onFinish }) {
       ])
     ).start();
 
-    // Orchestrate 3-step automatic sequence:
-    // Step 1: 0s -> 2.4s
-    const timer1 = setTimeout(() => {
-      goToStep(2);
+    // --- STEP 1 ANIMATION (0s to 2.4s) ---
+    // Segment 1 fills from 0 to 1 over 2.3s
+    Animated.timing(seg1Anim, {
+      toValue: 1,
+      duration: 2300,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start();
+
+    // Transition to Step 2 at 2.4s
+    const timerStep2 = setTimeout(() => {
+      if (hasFinishedRef.current) return;
+
+      Animated.timing(stepOpacity, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(() => {
+        setCurrentStep(2);
+        Animated.timing(stepOpacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }).start();
+
+        // --- STEP 2 ANIMATION (2.4s to 4.8s) ---
+        // Segment 2 fills from 0 to 1 over 2.3s
+        Animated.timing(seg2Anim, {
+          toValue: 1,
+          duration: 2300,
+          easing: Easing.linear,
+          useNativeDriver: false,
+        }).start();
+
+        // Transition to Step 3 at 4.8s
+        const timerStep3 = setTimeout(() => {
+          if (hasFinishedRef.current) return;
+
+          Animated.timing(stepOpacity, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: true,
+          }).start(() => {
+            setCurrentStep(3);
+            Animated.timing(stepOpacity, {
+              toValue: 1,
+              duration: 250,
+              useNativeDriver: true,
+            }).start();
+
+            // --- STEP 3 ANIMATION (4.8s to 7.0s) ---
+            // Segment 3 fills from 0 to 1 over 2.1s
+            Animated.timing(seg3Anim, {
+              toValue: 1,
+              duration: 2100,
+              easing: Easing.linear,
+              useNativeDriver: false,
+            }).start(() => {
+              setTimeout(finishFlow, 250);
+            });
+          });
+        }, 2400);
+
+        return () => clearTimeout(timerStep3);
+      });
     }, 2400);
 
-    // Step 2: 2.4s -> 4.8s
-    const timer2 = setTimeout(() => {
-      goToStep(3);
-    }, 4800);
-
     return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
+      clearTimeout(timerStep2);
     };
   }, []);
 
-  const goToStep = (targetStep) => {
-    if (hasFinishedRef.current) return;
+  // Calculate width for each of the 3 progress segments
+  const segmentWidthTotal = (width - 48 - 16) / 3; // total available width split by 3 segments with 8px gaps
 
-    Animated.timing(stepOpacity, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(() => {
-      setCurrentStep(targetStep);
-
-      // If entering Step 3 (Loading)
-      if (targetStep === 3) {
-        progressAnim.setValue(0);
-        Animated.timing(progressAnim, {
-          toValue: 1,
-          duration: 2100,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: false,
-        }).start(() => {
-          setTimeout(finishFlow, 200);
-        });
-      }
-
-      Animated.timing(stepOpacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    });
-  };
-
-  const progressWidth = progressAnim.interpolate({
+  const seg1Width = seg1Anim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, width * 0.54],
+    outputRange: [0, segmentWidthTotal],
   });
+
+  const seg2Width = seg2Anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, segmentWidthTotal],
+  });
+
+  const seg3Width = seg3Anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, segmentWidthTotal],
+  });
+
+  // Dynamic status text for each step
+  const getStatusText = () => {
+    if (currentStep === 1) return 'Powering Seamless Events';
+    if (currentStep === 2) return 'Preparing operational modules...';
+    return 'Setting things up...';
+  };
 
   return (
     <LinearGradient
-      colors={['#080415', '#120826', '#090417']}
+      colors={['#070314', '#110626', '#060210']}
       start={{ x: 0.3, y: 0 }}
       end={{ x: 0.7, y: 1 }}
       style={styles.container}
     >
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* Ambient background curves */}
+      {/* Ambient flowing waves background */}
       <View style={styles.ambientWaveBackground} pointerEvents="none">
         <LinearGradient
-          colors={['transparent', 'rgba(123, 28, 240, 0.18)', 'rgba(76, 29, 149, 0.34)']}
+          colors={['transparent', 'rgba(123, 28, 240, 0.16)', 'rgba(88, 28, 135, 0.32)']}
           style={styles.bottomWaveGradient}
         />
       </View>
 
       <SafeAreaView style={styles.safeArea}>
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-          {/* Top Bar with Skip Button for Step 2 */}
+          {/* Top Bar with Skip Button */}
           <View style={styles.topControlBar}>
-            {currentStep === 2 ? (
-              <TouchableOpacity
-                onPress={finishFlow}
-                style={styles.skipButton}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.skipText}>Skip</Text>
-                <Ionicons name="chevron-forward" size={14} color="rgba(192, 132, 252, 0.75)" />
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.skipPlaceholder} />
-            )}
+            <TouchableOpacity
+              onPress={finishFlow}
+              style={styles.skipButton}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.skipText}>Skip</Text>
+              <Ionicons name="chevron-forward" size={13} color="rgba(192, 132, 252, 0.75)" />
+            </TouchableOpacity>
           </View>
 
-          {/* Unified Brand Header (Exact Neon 2-Line Wordmark) */}
+          {/* High-Res Glowing Neon Wordmark Header */}
           <View style={styles.header}>
             <Image
-              source={require('../../assets/district_stock_neon_wordmark.png')}
+              source={require('../../assets/district_stock_neon_wordmark_hires.png')}
               style={styles.neonWordmark}
               resizeMode="contain"
             />
@@ -212,12 +256,12 @@ export default function SplashScreen({ onFinish }) {
             <Text style={styles.brandSubtitleRow2}>STOCK MOVEMENT</Text>
           </View>
 
-          {/* STEP 01: Entry Splash - Immersive 3D Visual */}
+          {/* --- STEP 01: Entry Splash (High-Res 3D Event Logistics Artwork) --- */}
           {currentStep === 1 && (
-            <Animated.View style={[styles.stepContainer, { opacity: stepOpacity }]}>
+            <Animated.View style={[styles.stepBody, { opacity: stepOpacity }]}>
               <Animated.View
                 style={[
-                  styles.heroGraphicBox,
+                  styles.heroGraphicContainer,
                   { transform: [{ translateY: heroFloat }] },
                 ]}
               >
@@ -227,29 +271,19 @@ export default function SplashScreen({ onFinish }) {
                   resizeMode="contain"
                 />
               </Animated.View>
-
-              {/* 4 Dots Pagination: Dot 1 active */}
-              <View style={styles.paginationFooter}>
-                <View style={styles.dotsRow}>
-                  <View style={styles.activeDot} />
-                  <View style={styles.inactiveDot} />
-                  <View style={styles.inactiveDot} />
-                  <View style={styles.inactiveDot} />
-                </View>
-              </View>
             </Animated.View>
           )}
 
-          {/* STEP 02: Features - 6 Capabilities Grid */}
+          {/* --- STEP 02: Features (6 Key Capabilities Grid) --- */}
           {currentStep === 2 && (
-            <Animated.View style={[styles.stepContainer, { opacity: stepOpacity }]}>
+            <Animated.View style={[styles.stepBody, { opacity: stepOpacity }]}>
               <View style={styles.featuresGrid}>
                 {FEATURES.map((item) => (
                   <View key={item.id} style={styles.featureItem}>
                     <View style={styles.featureIconCircle}>
                       <MaterialCommunityIcons
                         name={item.icon}
-                        size={25}
+                        size={27}
                         color="#C084FC"
                       />
                     </View>
@@ -257,25 +291,15 @@ export default function SplashScreen({ onFinish }) {
                   </View>
                 ))}
               </View>
-
-              {/* 4 Dots Pagination: Dot 2 active */}
-              <View style={styles.paginationFooter}>
-                <View style={styles.dotsRow}>
-                  <View style={styles.inactiveDot} />
-                  <View style={styles.activeDot} />
-                  <View style={styles.inactiveDot} />
-                  <View style={styles.inactiveDot} />
-                </View>
-              </View>
             </Animated.View>
           )}
 
-          {/* STEP 03: Loading - Holographic Pedestal & Progress */}
+          {/* --- STEP 03: Loading (High-Res Holographic Cargo Pedestal) --- */}
           {currentStep === 3 && (
-            <Animated.View style={[styles.stepContainer, { opacity: stepOpacity }]}>
+            <Animated.View style={[styles.stepBody, { opacity: stepOpacity }]}>
               <Animated.View
                 style={[
-                  styles.pedestalImageBox,
+                  styles.pedestalContainer,
                   { transform: [{ translateY: pedestalFloat }] },
                 ]}
               >
@@ -285,23 +309,51 @@ export default function SplashScreen({ onFinish }) {
                   resizeMode="contain"
                 />
               </Animated.View>
-
-              {/* Smooth Progress Bar & Setting things up... */}
-              <View style={styles.loadingFooter}>
-                <View style={styles.progressBarTrack}>
-                  <Animated.View style={[styles.progressBarFill, { width: progressWidth }]}>
-                    <LinearGradient
-                      colors={['#8A2BE2', '#C084FC']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.progressGradient}
-                    />
-                  </Animated.View>
-                </View>
-                <Text style={styles.settingText}>Setting things up...</Text>
-              </View>
             </Animated.View>
           )}
+
+          {/* --- UNIFIED 3-PART COMMON LOADING ANIMATION FOOTER --- */}
+          <View style={styles.commonFooter}>
+            <View style={styles.segmentedLoadingContainer}>
+              {/* Part 1 */}
+              <View style={styles.segmentTrack}>
+                <Animated.View style={[styles.segmentFill, { width: seg1Width }]}>
+                  <LinearGradient
+                    colors={['#8A2BE2', '#C084FC']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.segmentGradient}
+                  />
+                </Animated.View>
+              </View>
+
+              {/* Part 2 */}
+              <View style={styles.segmentTrack}>
+                <Animated.View style={[styles.segmentFill, { width: seg2Width }]}>
+                  <LinearGradient
+                    colors={['#8A2BE2', '#C084FC']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.segmentGradient}
+                  />
+                </Animated.View>
+              </View>
+
+              {/* Part 3 */}
+              <View style={styles.segmentTrack}>
+                <Animated.View style={[styles.segmentFill, { width: seg3Width }]}>
+                  <LinearGradient
+                    colors={['#8A2BE2', '#C084FC']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.segmentGradient}
+                  />
+                </Animated.View>
+              </View>
+            </View>
+
+            <Text style={styles.commonStatusText}>{getStatusText()}</Text>
+          </View>
         </Animated.View>
       </SafeAreaView>
     </LinearGradient>
@@ -317,9 +369,9 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 22,
-    paddingTop: 8,
-    paddingBottom: 24,
+    paddingHorizontal: 24,
+    paddingTop: 6,
+    paddingBottom: 22,
     justifyContent: 'space-between',
     alignItems: 'center',
   },
@@ -328,7 +380,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: height * 0.36,
+    height: height * 0.38,
   },
   bottomWaveGradient: {
     flex: 1,
@@ -340,32 +392,29 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    height: 24,
-    paddingRight: 6,
+    height: 22,
+    paddingRight: 4,
   },
   skipButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 2,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
   },
   skipText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '500',
     color: 'rgba(192, 132, 252, 0.75)',
     marginRight: 2,
   },
-  skipPlaceholder: {
-    height: 24,
-  },
   header: {
     alignItems: 'center',
     marginTop: 0,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   neonWordmark: {
-    width: 146,
-    height: 84,
+    width: 148,
+    height: 86,
     marginBottom: 4,
   },
   brandSubtitleRow1: {
@@ -383,16 +432,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 2,
   },
-  stepContainer: {
+  stepBody: {
     flex: 1,
     width: '100%',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 10,
+    justifyContent: 'center',
+    paddingVertical: 10,
   },
-  heroGraphicBox: {
-    width: width * 0.9,
-    height: height * 0.38,
+  heroGraphicContainer: {
+    width: width * 0.94,
+    height: height * 0.44,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -406,100 +455,78 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
     paddingHorizontal: 6,
-    marginTop: 18,
   },
   featureItem: {
     width: '30%',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 26,
   },
   featureIconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(192, 132, 252, 0.22)',
+    borderColor: 'rgba(192, 132, 252, 0.25)',
     marginBottom: 8,
     shadowColor: '#8B5CF6',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 4,
   },
   featureItemTitle: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: '600',
     color: '#E9D5FF',
     textAlign: 'center',
-    lineHeight: 14.5,
+    lineHeight: 15,
   },
-  pedestalImageBox: {
-    width: width * 0.72,
-    height: height * 0.36,
+  pedestalContainer: {
+    width: width * 0.86,
+    height: height * 0.42,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
   },
   pedestalImage: {
     width: '100%',
     height: '100%',
   },
-  paginationFooter: {
+  commonFooter: {
+    width: '100%',
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 10,
   },
-  dotsRow: {
+  segmentedLoadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  activeDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: '#8B5CF6',
-    marginHorizontal: 5,
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 5,
-    elevation: 4,
-  },
-  inactiveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    marginHorizontal: 5,
-  },
-  loadingFooter: {
-    alignItems: 'center',
-    marginBottom: 22,
+    justifyContent: 'space-between',
     width: '100%',
+    marginBottom: 10,
   },
-  progressBarTrack: {
-    width: width * 0.54,
-    height: 4.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: 6,
-    overflow: 'hidden',
-    marginBottom: 12,
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 6,
-  },
-  progressGradient: {
+  segmentTrack: {
     flex: 1,
-    borderRadius: 6,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginHorizontal: 3.5,
   },
-  settingText: {
-    fontSize: 12,
+  segmentFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  segmentGradient: {
+    flex: 1,
+    borderRadius: 3,
+  },
+  commonStatusText: {
+    fontSize: 12.5,
     fontWeight: '500',
-    color: 'rgba(192, 132, 252, 0.75)',
-    letterSpacing: 0.5,
+    color: 'rgba(192, 132, 252, 0.8)',
+    letterSpacing: 0.4,
     textAlign: 'center',
   },
 });

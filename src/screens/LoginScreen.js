@@ -113,7 +113,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
           {/* Header Brand Section */}
           <View style={styles.brandContainer}>
             <Image
-              source={require('../../assets/district_stock_neon_wordmark.png')}
+              source={require('../../assets/district_stock_neon_wordmark_hires.png')}
               style={styles.neonWordmark}
               resizeMode="contain"
             />
