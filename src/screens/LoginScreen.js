@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import * as Network from 'expo-network';
 import { COLORS } from '../theme/colors';
 
 const { width } = Dimensions.get('window');
@@ -29,9 +30,12 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
   const [isLoading, setIsLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null); // 'user' | 'pass' | null
 
+  // Network connection status: 'online' | 'weak' | 'offline'
+  const [networkStatus, setNetworkStatus] = useState('online');
+
   const scrollViewRef = useRef(null);
 
-  // Pulsing animation for the "Terminal Online" status dot
+  // Pulsing animation for the terminal status dot
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
@@ -51,7 +55,67 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
     ).start();
   }, []);
 
+  // Real-time network detection & latency heartbeat
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkNetworkHealth = async () => {
+      try {
+        const netState = await Network.getNetworkStateAsync();
+        if (!netState.isConnected || netState.isInternetReachable === false) {
+          if (isMounted) setNetworkStatus('offline');
+          return;
+        }
+
+        // Active latency ping to measure signal quality
+        const startTime = Date.now();
+        const controller = new AbortController();
+        const timeoutTimer = setTimeout(() => controller.abort(), 2800);
+
+        await fetch('https://clients3.google.com/generate_204', {
+          method: 'HEAD',
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        clearTimeout(timeoutTimer);
+
+        const latency = Date.now() - startTime;
+        if (!isMounted) return;
+
+        // If latency > 600ms, mark as weak connection
+        if (latency > 600) {
+          setNetworkStatus('weak');
+        } else {
+          setNetworkStatus('online');
+        }
+      } catch (err) {
+        if (isMounted) {
+          setNetworkStatus('offline');
+        }
+      }
+    };
+
+    // Run immediately on screen appearance
+    checkNetworkHealth();
+
+    // Check periodically every 3 seconds for fast response when turning off data
+    const intervalId = setInterval(checkNetworkHealth, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, []);
+
   const handleLogin = () => {
+    if (networkStatus === 'offline') {
+      Alert.alert(
+        'Terminal Offline',
+        'No network connection detected. Please enable mobile data or Wi-Fi to authenticate.'
+      );
+      return;
+    }
+
     if (!userId.trim()) {
       Alert.alert('Required', 'Please enter your User ID.');
       return;
@@ -219,26 +283,37 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
             </TouchableOpacity>
           </View>
 
-          {/* Footer Security Status */}
+          {/* Footer Terminal Connection Status */}
           <View style={styles.footerStatus}>
             <Animated.View
               style={[
                 styles.statusDot,
+                networkStatus === 'online' && styles.statusDotOnline,
+                networkStatus === 'weak' && styles.statusDotWeak,
+                networkStatus === 'offline' && styles.statusDotOffline,
                 {
                   opacity: pulseAnim,
                   transform: [
                     {
                       scale: pulseAnim.interpolate({
                         inputRange: [0.35, 1],
-                        outputRange: [0.85, 1.2],
+                        outputRange: [0.85, 1.25],
                       }),
                     },
                   ],
                 },
               ]}
             />
-            <Text style={styles.statusText}>
-              Terminal Online • 256-bit Encrypted Session
+            <Text
+              style={[
+                styles.statusText,
+                networkStatus === 'weak' && styles.statusTextWeak,
+                networkStatus === 'offline' && styles.statusTextOffline,
+              ]}
+            >
+              {networkStatus === 'online' && 'Terminal Online • 256-bit Encrypted Session'}
+              {networkStatus === 'weak' && 'Terminal Weak Signal • High Latency'}
+              {networkStatus === 'offline' && 'Terminal Offline • No Network Connection'}
             </Text>
           </View>
         </ScrollView>
@@ -402,16 +477,48 @@ const styles = StyleSheet.create({
     marginTop: 22,
   },
   statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: COLORS.onlineGreen,
+    width: 7.5,
+    height: 7.5,
+    borderRadius: 4,
     marginRight: 8,
+    backgroundColor: COLORS.onlineGreen,
+  },
+  statusDotOnline: {
+    backgroundColor: COLORS.onlineGreen,
+    shadowColor: COLORS.onlineGreen,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  statusDotWeak: {
+    backgroundColor: COLORS.warning,
+    shadowColor: COLORS.warning,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  statusDotOffline: {
+    backgroundColor: COLORS.error,
+    shadowColor: COLORS.error,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 4,
   },
   statusText: {
     fontSize: 12,
     color: COLORS.textDim,
     fontWeight: '500',
     letterSpacing: 0.2,
+  },
+  statusTextWeak: {
+    color: COLORS.warning,
+    fontWeight: '600',
+  },
+  statusTextOffline: {
+    color: COLORS.error,
+    fontWeight: '600',
   },
 });
