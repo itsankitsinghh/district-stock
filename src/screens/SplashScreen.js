@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,11 +9,11 @@ import {
   StatusBar,
   TouchableOpacity,
   Easing,
+  Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../theme/colors';
 
 const { width, height } = Dimensions.get('window');
 
@@ -51,20 +51,17 @@ const FEATURES = [
 ];
 
 export default function SplashScreen({ onFinish }) {
-  const [currentStep, setCurrentStep] = useState(1); // 1 = Entry Splash, 2 = Features, 3 = Loading
+  const insets = useSafeAreaInsets();
 
-  // Fade & transition animations
+  // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const stepOpacity = useRef(new Animated.Value(1)).current;
-  const heroFloat = useRef(new Animated.Value(0)).current;
-  const pedestalFloat = useRef(new Animated.Value(0)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const logoPulse = useRef(new Animated.Value(1)).current;
+  const pinPulse = useRef(new Animated.Value(0)).current;
+  const pinBob = useRef(new Animated.Value(0)).current;
+  const textPulse = useRef(new Animated.Value(0.6)).current;
 
-  // 3-Part Common Segmented Loading Animations
-  const seg1Anim = useRef(new Animated.Value(0)).current;
-  const seg2Anim = useRef(new Animated.Value(0)).current;
-  const seg3Anim = useRef(new Animated.Value(0)).current;
-
-  // Track finished state to prevent multiple triggers
+  // Track finished state to prevent multiple calls
   const hasFinishedRef = useRef(false);
 
   const finishFlow = () => {
@@ -74,24 +71,24 @@ export default function SplashScreen({ onFinish }) {
   };
 
   useEffect(() => {
-    // 1. Initial screen fade-in
+    // 1. Screen fade-in
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 500,
+      duration: 450,
       useNativeDriver: true,
     }).start();
 
-    // 2. Step 1 3D Hero hover loop
+    // 2. Subtle logo breathing neon pulse
     Animated.loop(
       Animated.sequence([
-        Animated.timing(heroFloat, {
-          toValue: -6,
+        Animated.timing(logoPulse, {
+          toValue: 1.03,
           duration: 1600,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
-        Animated.timing(heroFloat, {
-          toValue: 6,
+        Animated.timing(logoPulse, {
+          toValue: 0.98,
           duration: 1600,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
@@ -99,383 +96,342 @@ export default function SplashScreen({ onFinish }) {
       ])
     ).start();
 
-    // 3. Step 3 Pedestal box hover loop
+    // 3. Location pins vertical float & ripple
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pedestalFloat, {
-          toValue: -6,
-          duration: 1400,
+        Animated.timing(pinBob, {
+          toValue: -5,
+          duration: 1200,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
-        Animated.timing(pedestalFloat, {
-          toValue: 6,
-          duration: 1400,
+        Animated.timing(pinBob, {
+          toValue: 5,
+          duration: 1200,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
       ])
     ).start();
 
-    // --- STEP 1 ANIMATION (0s to 2.4s) ---
-    // Segment 1 fills from 0 to 1 over 2.3s
-    Animated.timing(seg1Anim, {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pinPulse, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pinPulse, {
+          toValue: 0,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // 4. "Setting things up..." text opacity breathing
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(textPulse, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(textPulse, {
+          toValue: 0.45,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // 5. High-tech smooth progress bar (loads smoothly over 2.8s)
+    Animated.timing(progressAnim, {
       toValue: 1,
-      duration: 2300,
-      easing: Easing.linear,
+      duration: 2800,
+      easing: Easing.bezier(0.25, 0.1, 0.25, 1.0),
       useNativeDriver: false,
-    }).start();
-
-    // Transition to Step 2 at 2.4s
-    const timerStep2 = setTimeout(() => {
-      if (hasFinishedRef.current) return;
-
-      Animated.timing(stepOpacity, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }).start(() => {
-        setCurrentStep(2);
-        Animated.timing(stepOpacity, {
-          toValue: 1,
-          duration: 250,
-          useNativeDriver: true,
-        }).start();
-
-        // --- STEP 2 ANIMATION (2.4s to 4.8s) ---
-        // Segment 2 fills from 0 to 1 over 2.3s
-        Animated.timing(seg2Anim, {
-          toValue: 1,
-          duration: 2300,
-          easing: Easing.linear,
-          useNativeDriver: false,
-        }).start();
-
-        // Transition to Step 3 at 4.8s
-        const timerStep3 = setTimeout(() => {
-          if (hasFinishedRef.current) return;
-
-          Animated.timing(stepOpacity, {
-            toValue: 0,
-            duration: 220,
-            useNativeDriver: true,
-          }).start(() => {
-            setCurrentStep(3);
-            Animated.timing(stepOpacity, {
-              toValue: 1,
-              duration: 250,
-              useNativeDriver: true,
-            }).start();
-
-            // --- STEP 3 ANIMATION (4.8s to 7.0s) ---
-            // Segment 3 fills from 0 to 1 over 2.1s
-            Animated.timing(seg3Anim, {
-              toValue: 1,
-              duration: 2100,
-              easing: Easing.linear,
-              useNativeDriver: false,
-            }).start(() => {
-              setTimeout(finishFlow, 250);
-            });
-          });
-        }, 2400);
-
-        return () => clearTimeout(timerStep3);
-      });
-    }, 2400);
-
-    return () => {
-      clearTimeout(timerStep2);
-    };
+    }).start(() => {
+      setTimeout(finishFlow, 250);
+    });
   }, []);
 
-  // Calculate width for each of the 3 progress segments
-  const segmentWidthTotal = (width - 48 - 16) / 3; // total available width split by 3 segments with 8px gaps
-
-  const seg1Width = seg1Anim.interpolate({
+  const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, segmentWidthTotal],
+    outputRange: [0, width * 0.64],
   });
 
-  const seg2Width = seg2Anim.interpolate({
+  const pinScale = pinPulse.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, segmentWidthTotal],
+    outputRange: [0.8, 1.8],
   });
 
-  const seg3Width = seg3Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, segmentWidthTotal],
+  const pinOpacity = pinPulse.interpolate({
+    inputRange: [0, 0.7, 1],
+    outputRange: [0.85, 0.4, 0],
   });
-
-  // Dynamic status text for each step
-  const getStatusText = () => {
-    if (currentStep === 1) return 'Powering Seamless Events';
-    if (currentStep === 2) return 'Preparing operational modules...';
-    return 'Setting things up...';
-  };
 
   return (
-    <LinearGradient
-      colors={['#070314', '#110626', '#060210']}
-      start={{ x: 0.3, y: 0 }}
-      end={{ x: 0.7, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* Ambient flowing waves background */}
-      <View style={styles.ambientWaveBackground} pointerEvents="none">
-        <LinearGradient
-          colors={['transparent', 'rgba(123, 28, 240, 0.16)', 'rgba(88, 28, 135, 0.32)']}
-          style={styles.bottomWaveGradient}
+      {/* 1. Base Gradient Canvas */}
+      <LinearGradient
+        colors={['#060214', '#0A0322', '#060215']}
+        start={{ x: 0.3, y: 0 }}
+        end={{ x: 0.7, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      {/* 2. Top Silky 3D Ribbon Artwork */}
+      <Image
+        source={require('../../assets/splash_top_ribbon_clean.png')}
+        style={styles.topRibbonArtwork}
+        resizeMode="cover"
+      />
+
+      {/* 3. Bottom 3D Ground Scene Artwork (Truck, Forklift, Stage, Floor Reflections) */}
+      <View style={styles.groundSceneWrapper} pointerEvents="none">
+        <Image
+          source={require('../../assets/splash_ground_scene_clean.png')}
+          style={styles.groundSceneArtwork}
+          resizeMode="cover"
         />
+
+        {/* Animated Holographic Waypoint Pins over Truck & Forklift */}
+        <Animated.View
+          style={[
+            styles.waypointPin,
+            styles.pinTruck,
+            { transform: [{ translateY: pinBob }] },
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.pinHalo,
+              { transform: [{ scale: pinScale }], opacity: pinOpacity },
+            ]}
+          />
+          <MaterialCommunityIcons name="map-marker" size={24} color="#C084FC" />
+        </Animated.View>
+
+        <Animated.View
+          style={[
+            styles.waypointPin,
+            styles.pinForklift,
+            { transform: [{ translateY: pinBob }] },
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.pinHalo,
+              { transform: [{ scale: pinScale }], opacity: pinOpacity },
+            ]}
+          />
+          <MaterialCommunityIcons name="map-marker" size={20} color="#E879F9" />
+        </Animated.View>
       </View>
 
-      <SafeAreaView style={styles.safeArea}>
-        <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-          {/* Top Bar with Skip Button */}
-          <View style={styles.topControlBar}>
-            <TouchableOpacity
-              onPress={finishFlow}
-              style={styles.skipButton}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.skipText}>Skip</Text>
-              <Ionicons name="chevron-forward" size={13} color="rgba(192, 132, 252, 0.75)" />
-            </TouchableOpacity>
-          </View>
+      {/* 4. Foreground Content */}
+      <Animated.View style={[styles.foregroundContainer, { opacity: fadeAnim }]}>
+        {/* Top Control Bar: Skip button at top right */}
+        <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 14) }]}>
+          <TouchableOpacity
+            onPress={finishFlow}
+            style={styles.skipButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
+          >
+            <Text style={styles.skipText}>Skip</Text>
+            <Ionicons name="chevron-forward" size={13} color="rgba(216, 180, 254, 0.9)" />
+          </TouchableOpacity>
+        </View>
 
-          {/* High-Res Glowing Neon Wordmark Header */}
-          <View style={styles.header}>
-            <Image
-              source={require('../../assets/district_stock_neon_wordmark_hires.png')}
-              style={styles.neonWordmark}
-              resizeMode="contain"
-            />
-            <Text style={styles.brandSubtitleRow1}>EVENT LOGISTICS &</Text>
-            <Text style={styles.brandSubtitleRow2}>STOCK MOVEMENT</Text>
-          </View>
-
-          {/* --- STEP 01: Entry Splash (High-Res 3D Event Logistics Artwork) --- */}
-          {currentStep === 1 && (
-            <Animated.View style={[styles.stepBody, { opacity: stepOpacity }]}>
-              <Animated.View
-                style={[
-                  styles.heroGraphicContainer,
-                  { transform: [{ translateY: heroFloat }] },
-                ]}
-              >
-                <Image
-                  source={require('../../assets/event_logistics_hero_hires.png')}
-                  style={styles.heroArtwork}
-                  resizeMode="contain"
-                />
-              </Animated.View>
-            </Animated.View>
-          )}
-
-          {/* --- STEP 02: Features (6 Key Capabilities Grid) --- */}
-          {currentStep === 2 && (
-            <Animated.View style={[styles.stepBody, { opacity: stepOpacity }]}>
-              <View style={styles.featuresGrid}>
-                {FEATURES.map((item) => (
-                  <View key={item.id} style={styles.featureItem}>
-                    <View style={styles.featureIconCircle}>
-                      <MaterialCommunityIcons
-                        name={item.icon}
-                        size={27}
-                        color="#C084FC"
-                      />
-                    </View>
-                    <Text style={styles.featureItemTitle}>{item.title}</Text>
-                  </View>
-                ))}
-              </View>
-            </Animated.View>
-          )}
-
-          {/* --- STEP 03: Loading (High-Res Holographic Cargo Pedestal) --- */}
-          {currentStep === 3 && (
-            <Animated.View style={[styles.stepBody, { opacity: stepOpacity }]}>
-              <Animated.View
-                style={[
-                  styles.pedestalContainer,
-                  { transform: [{ translateY: pedestalFloat }] },
-                ]}
-              >
-                <Image
-                  source={require('../../assets/neon_pedestal_box.png')}
-                  style={styles.pedestalImage}
-                  resizeMode="contain"
-                />
-              </Animated.View>
-            </Animated.View>
-          )}
-
-          {/* --- UNIFIED 3-PART COMMON LOADING ANIMATION FOOTER --- */}
-          <View style={styles.commonFooter}>
-            <View style={styles.segmentedLoadingContainer}>
-              {/* Part 1 */}
-              <View style={styles.segmentTrack}>
-                <Animated.View style={[styles.segmentFill, { width: seg1Width }]}>
-                  <LinearGradient
-                    colors={['#8A2BE2', '#C084FC']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.segmentGradient}
-                  />
-                </Animated.View>
-              </View>
-
-              {/* Part 2 */}
-              <View style={styles.segmentTrack}>
-                <Animated.View style={[styles.segmentFill, { width: seg2Width }]}>
-                  <LinearGradient
-                    colors={['#8A2BE2', '#C084FC']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.segmentGradient}
-                  />
-                </Animated.View>
-              </View>
-
-              {/* Part 3 */}
-              <View style={styles.segmentTrack}>
-                <Animated.View style={[styles.segmentFill, { width: seg3Width }]}>
-                  <LinearGradient
-                    colors={['#8A2BE2', '#C084FC']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.segmentGradient}
-                  />
-                </Animated.View>
-              </View>
-            </View>
-
-            <Text style={styles.commonStatusText}>{getStatusText()}</Text>
-          </View>
+        {/* Brand Header: Glowing Neon Wordmark & Subtitle */}
+        <Animated.View
+          style={[
+            styles.header,
+            { transform: [{ scale: logoPulse }] },
+          ]}
+        >
+          <Image
+            source={require('../../assets/district_stock_neon_wordmark_hires.png')}
+            style={styles.neonWordmark}
+            resizeMode="contain"
+          />
+          <Text style={styles.brandSubtitleRow1}>EVENT LOGISTICS &</Text>
+          <Text style={styles.brandSubtitleRow2}>STOCK MOVEMENT</Text>
         </Animated.View>
-      </SafeAreaView>
-    </LinearGradient>
+
+        {/* Middle: 6 Circular Feature Badges (2x3 Grid) */}
+        <View style={styles.featuresSection}>
+          <View style={styles.featuresGrid}>
+            {FEATURES.map((item) => (
+              <View key={item.id} style={styles.featureItem}>
+                <View style={styles.featureIconCircle}>
+                  <MaterialCommunityIcons
+                    name={item.icon}
+                    size={24}
+                    color="#C084FC"
+                  />
+                </View>
+                <Text style={styles.featureItemTitle}>{item.title}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Spacer to allow 3D Ground Scene to shine in middle-lower screen */}
+        <View style={styles.sceneSpacer} />
+
+        {/* Footer: Illuminated Progress Bar & Status Text */}
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <View style={styles.progressBarTrack}>
+            <Animated.View style={[styles.progressBarFill, { width: progressWidth }]}>
+              <LinearGradient
+                colors={['#7C3AED', '#C084FC', '#F472B6']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.progressGradient}
+              />
+            </Animated.View>
+          </View>
+          <Animated.Text style={[styles.statusText, { opacity: textPulse }]}>
+            Setting things up...
+          </Animated.Text>
+        </View>
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#060214',
   },
-  safeArea: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 6,
-    paddingBottom: 22,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  ambientWaveBackground: {
+  topRibbonArtwork: {
     position: 'absolute',
+    top: 0,
     left: 0,
     right: 0,
+    width: width,
+    height: height * 0.26,
+  },
+  groundSceneWrapper: {
+    position: 'absolute',
     bottom: 0,
-    height: height * 0.38,
+    left: 0,
+    right: 0,
+    width: width,
+    height: height * 0.44,
   },
-  bottomWaveGradient: {
+  groundSceneArtwork: {
+    width: '100%',
+    height: '100%',
+  },
+  waypointPin: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinTruck: {
+    left: width * 0.28,
+    top: '24%',
+  },
+  pinForklift: {
+    left: width * 0.49,
+    top: '36%',
+  },
+  pinHalo: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(192, 132, 252, 0.45)',
+  },
+  foregroundContainer: {
     flex: 1,
-    borderTopLeftRadius: 180,
-    borderTopRightRadius: 180,
-    transform: [{ scaleX: 1.5 }],
+    justifyContent: 'space-between',
+    zIndex: 10,
   },
-  topControlBar: {
+  topBar: {
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    height: 22,
-    paddingRight: 4,
+    paddingHorizontal: 22,
+    zIndex: 20,
   },
   skipButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 2,
-    paddingHorizontal: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   skipText: {
-    fontSize: 12.5,
-    fontWeight: '500',
-    color: 'rgba(192, 132, 252, 0.75)',
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(216, 180, 254, 0.9)',
     marginRight: 2,
+    letterSpacing: 0.3,
   },
   header: {
     alignItems: 'center',
-    marginTop: 0,
-    marginBottom: 6,
+    marginTop: -4,
+    paddingHorizontal: 20,
   },
   neonWordmark: {
-    width: 148,
-    height: 86,
+    width: Math.min(width * 0.46, 185),
+    height: Math.min(height * 0.11, 95),
     marginBottom: 4,
   },
   brandSubtitleRow1: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '700',
-    color: 'rgba(192, 132, 252, 0.85)',
-    letterSpacing: 2.2,
+    color: '#C084FC',
+    letterSpacing: 2.4,
     textAlign: 'center',
   },
   brandSubtitleRow2: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '700',
-    color: 'rgba(192, 132, 252, 0.85)',
-    letterSpacing: 2.2,
+    color: '#C084FC',
+    letterSpacing: 2.4,
     textAlign: 'center',
     marginTop: 2,
   },
-  stepBody: {
-    flex: 1,
+  featuresSection: {
     width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-  },
-  heroGraphicContainer: {
-    width: width * 0.94,
-    height: height * 0.44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroArtwork: {
-    width: '100%',
-    height: '100%',
+    paddingHorizontal: 16,
+    marginTop: 8,
   },
   featuresGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     width: '100%',
-    paddingHorizontal: 6,
   },
   featureItem: {
-    width: '30%',
+    width: '31%',
     alignItems: 'center',
-    marginBottom: 26,
+    marginBottom: 16,
   },
   featureIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(38, 12, 72, 0.72)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(192, 132, 252, 0.25)',
-    marginBottom: 8,
+    borderWidth: 1.2,
+    borderColor: 'rgba(192, 132, 252, 0.3)',
+    marginBottom: 6,
     shadowColor: '#8B5CF6',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.45,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 5,
   },
   featureItemTitle: {
     fontSize: 11.5,
@@ -484,48 +440,38 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 15,
   },
-  pedestalContainer: {
-    width: width * 0.86,
-    height: height * 0.42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pedestalImage: {
-    width: '100%',
-    height: '100%',
-  },
-  commonFooter: {
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  segmentedLoadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 10,
-  },
-  segmentTrack: {
+  sceneSpacer: {
     flex: 1,
-    height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  footer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  progressBarTrack: {
+    width: width * 0.64,
+    height: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
     borderRadius: 3,
     overflow: 'hidden',
-    marginHorizontal: 3.5,
+    marginBottom: 10,
+    shadowColor: '#C084FC',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
   },
-  segmentFill: {
+  progressBarFill: {
     height: '100%',
     borderRadius: 3,
   },
-  segmentGradient: {
+  progressGradient: {
     flex: 1,
     borderRadius: 3,
   },
-  commonStatusText: {
-    fontSize: 12.5,
+  statusText: {
+    fontSize: 12,
     fontWeight: '500',
-    color: 'rgba(192, 132, 252, 0.8)',
+    color: 'rgba(216, 180, 254, 0.82)',
     letterSpacing: 0.4,
     textAlign: 'center',
   },
