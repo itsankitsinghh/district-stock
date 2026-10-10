@@ -105,11 +105,12 @@ const INITIAL_ADMIN_HASH = '6f7e26acbdbec4200b4c92dc0bc9098b6083c91d39d0bca0353e
 
 // In-memory persistent database of authorized user accounts
 // Initial installation starts strictly with the initial administrator account
+// In-memory persistent database of authorized user accounts matching Figma design
 let usersDatabase = [
   {
     id: 'USR-001',
     email: 'super.admin@district.com',
-    userId: 'super.admin@district.com',
+    userId: 'ADM-001',
     name: 'Super Administrator',
     role: 'Admin',
     status: 'active',
@@ -118,6 +119,45 @@ let usersDatabase = [
     salt: SALT,
     passwordHash: INITIAL_ADMIN_HASH,
     createdAt: '2026-10-10T00:00:00.000Z',
+  },
+  {
+    id: 'WHG-001',
+    email: 'rahul.kumar@district.com',
+    userId: 'WHG-001',
+    name: 'Rahul Kumar',
+    role: 'Warehouse Ground User',
+    status: 'active',
+    mobile: '+91 98XXX 12345',
+    assignedLocations: ['Warehouse A', 'Warehouse B'],
+    salt: SALT,
+    passwordHash: INITIAL_ADMIN_HASH,
+    createdAt: '2026-10-10T01:00:00.000Z',
+  },
+  {
+    id: 'EVP-014',
+    email: 'sneha.patil@district.com',
+    userId: 'EVP-014',
+    name: 'Sneha Patil',
+    role: 'Event Planner',
+    status: 'active',
+    mobile: '+91 97XXX 98765',
+    assignedLocations: ['Event A', 'Event C'],
+    salt: SALT,
+    passwordHash: INITIAL_ADMIN_HASH,
+    createdAt: '2026-10-10T02:00:00.000Z',
+  },
+  {
+    id: 'WHG-022',
+    email: 'amit.more@district.com',
+    userId: 'WHG-022',
+    name: 'Amit More',
+    role: 'Warehouse Ground User',
+    status: 'inactive',
+    mobile: '+91 99XXX 67890',
+    assignedLocations: ['Warehouse D'],
+    salt: SALT,
+    passwordHash: INITIAL_ADMIN_HASH,
+    createdAt: '2026-10-10T03:00:00.000Z',
   },
 ];
 
@@ -149,7 +189,8 @@ export const authService = {
     const user = usersDatabase.find(
       (u) =>
         u.email.toLowerCase() === cleanId ||
-        (u.userId && u.userId.toLowerCase() === cleanId)
+        (u.userId && u.userId.toLowerCase() === cleanId) ||
+        (u.id && u.id.toLowerCase() === cleanId)
     );
 
     if (!user) {
@@ -264,14 +305,107 @@ export const authService = {
   },
 
   /**
+   * Get a single user by ID
+   */
+  getUserById(id) {
+    const user = usersDatabase.find((u) => u.id === id || u.userId === id);
+    if (!user) return null;
+    const { passwordHash, salt, ...safeUser } = user;
+    return safeUser;
+  },
+
+  /**
+   * Add a new user (Screen 02)
+   */
+  addUser(userData) {
+    const rolePrefixMap = {
+      'Warehouse Ground User': 'WHG',
+      'Ground User — Warehouse': 'WHG',
+      'Ground User — Event': 'EVG',
+      'Event Ground User': 'EVG',
+      'Event Planner': 'EVP',
+      'Operations Manager': 'OPM',
+      'Admin': 'ADM',
+    };
+
+    const prefix = rolePrefixMap[userData.role] || 'USR';
+    const nextNum = Math.floor(100 + Math.random() * 900);
+    const generatedId = `${prefix}-${nextNum}`;
+
+    const newUser = {
+      id: userData.userId && userData.userId.trim() ? userData.userId.trim() : generatedId,
+      userId: userData.userId && userData.userId.trim() ? userData.userId.trim() : generatedId,
+      name: userData.name ? userData.name.trim() : 'New User',
+      email: userData.email && userData.email.trim() ? userData.email.trim() : `${generatedId.toLowerCase()}@district.com`,
+      mobile: userData.mobile ? userData.mobile.trim() : '+91 98000 00000',
+      role: userData.role || 'Warehouse Ground User',
+      status: userData.status || 'active',
+      assignedLocations: userData.assignedLocations || ['Warehouse A'],
+      salt: SALT,
+      passwordHash: INITIAL_ADMIN_HASH, // default password Admin@1234
+      createdAt: new Date().toISOString(),
+    };
+
+    usersDatabase.unshift(newUser);
+    const { passwordHash, salt, ...safeUser } = newUser;
+    return { success: true, user: safeUser };
+  },
+
+  /**
+   * Update an existing user (Screen 03)
+   */
+  updateUser(id, updatedFields) {
+    const index = usersDatabase.findIndex((u) => u.id === id || u.userId === id);
+    if (index === -1) {
+      return { success: false, error: 'User not found.' };
+    }
+
+    usersDatabase[index] = {
+      ...usersDatabase[index],
+      ...updatedFields,
+    };
+
+    const { passwordHash, salt, ...safeUser } = usersDatabase[index];
+    return { success: true, user: safeUser };
+  },
+
+  /**
+   * Toggle user active/inactive status (Screen 03 Deactivate/Activate)
+   */
+  toggleUserStatus(id) {
+    const index = usersDatabase.findIndex((u) => u.id === id || u.userId === id);
+    if (index === -1) {
+      return { success: false, error: 'User not found.' };
+    }
+
+    const currentStatus = usersDatabase[index].status;
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    usersDatabase[index].status = newStatus;
+
+    return { success: true, status: newStatus };
+  },
+
+  /**
+   * Delete user
+   */
+  deleteUser(id) {
+    const initialLen = usersDatabase.length;
+    usersDatabase = usersDatabase.filter((u) => u.id !== id && u.userId !== id);
+    return { success: usersDatabase.length < initialLen };
+  },
+
+  /**
    * Get User Setup metric summary
    */
   getUserMetrics() {
-    // In initial fresh installation, metrics are blank (—) as requested
+    const total = usersDatabase.length;
+    const active = usersDatabase.filter((u) => u.status === 'active').length;
+    const inactive = usersDatabase.filter((u) => u.status === 'inactive').length;
+
     return {
-      total: '—',
-      active: '—',
-      inactive: '—',
+      total: String(total),
+      active: String(active),
+      inactive: String(inactive),
     };
   },
 };
