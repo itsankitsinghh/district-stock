@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import * as Network from 'expo-network';
 import { COLORS } from '../theme/colors';
+import { authService } from '../services/authService';
 
 const { width } = Dimensions.get('window');
 
@@ -126,7 +127,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
     setFocusedInput(null);
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     let hasError = false;
 
     if (networkStatus === 'offline') {
@@ -137,7 +138,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
     }
 
     if (!userId.trim()) {
-      setUserIdError('Please enter your User ID');
+      setUserIdError('Please enter your User ID or Email');
       hasError = true;
     } else {
       setUserIdError('');
@@ -153,19 +154,25 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
     if (hasError) return;
 
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      const authResult = await authService.authenticate(userId, password);
       setIsLoading(false);
-      if (onLoginSuccess) {
-        onLoginSuccess({
-          user: userId,
-          hub: 'Central Warehouse - Terminal 01',
-          role: 'Authorized Operator',
-        });
+
+      if (!authResult.success) {
+        setPasswordError(authResult.error);
+        return;
       }
-    }, 600);
+
+      if (onLoginSuccess) {
+        onLoginSuccess(authResult.session);
+      }
+    } catch (err) {
+      setIsLoading(false);
+      setPasswordError('Authentication failed. Please try again.');
+    }
   };
 
-  const handleAccessCodeLogin = () => {
+  const handleAccessCodeLogin = async () => {
     if (networkStatus === 'offline') {
       setOfflineError('Terminal is offline. Please enable mobile data or Wi-Fi to authenticate.');
       return;
@@ -186,17 +193,22 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
 
     setCodeError('');
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      const codeResult = await authService.authenticateAccessCode(trimmed);
       setIsLoading(false);
-      if (onLoginSuccess) {
-        onLoginSuccess({
-          user: `GROUND-${trimmed.toUpperCase()}`,
-          hub: 'Event Ground Team - Dispatch Hub',
-          role: 'Ground Operations',
-          accessCode: trimmed.toUpperCase(),
-        });
+
+      if (!codeResult.success) {
+        setCodeError(codeResult.error);
+        return;
       }
-    }, 600);
+
+      if (onLoginSuccess) {
+        onLoginSuccess(codeResult.session);
+      }
+    } catch (err) {
+      setIsLoading(false);
+      setCodeError('Failed to verify access code.');
+    }
   };
 
   const handleFocusPassword = () => {
@@ -328,10 +340,10 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
                       style={styles.inputLeadingIcon}
                     />
                     <View style={styles.inputInnerCol}>
-                      <Text style={styles.inputInnerLabel}>User ID</Text>
+                      <Text style={styles.inputInnerLabel}>User ID or Email</Text>
                       <TextInput
                         style={styles.inputInnerField}
-                        placeholder="Enter your user ID"
+                        placeholder="super.admin@district.com"
                         placeholderTextColor="#6B599C"
                         value={userId}
                         onChangeText={(val) => {

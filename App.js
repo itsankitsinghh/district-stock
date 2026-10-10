@@ -5,7 +5,8 @@ import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
-import DashboardScreen from './src/screens/DashboardScreen';
+import MainAppContainer from './src/screens/MainAppContainer';
+import { authService } from './src/services/authService';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('splash');
@@ -22,6 +23,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    authService.logout();
     setSession(null);
     setCurrentScreen('login');
   };
@@ -73,8 +75,8 @@ export default function App() {
             onResetSuccess={handleResetSuccess}
           />
         )}
-        {currentScreen === 'dashboard' && (
-          <DashboardScreen
+        {currentScreen === 'dashboard' && session && (
+          <MainAppContainer
             session={session}
             onLogout={handleLogout}
           />
