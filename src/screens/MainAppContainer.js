@@ -29,7 +29,7 @@ export default function MainAppContainer({ session, onLogout }) {
   const renderActiveScreen = () => {
     switch (currentKey) {
       case 'dashboard':
-        return <DashboardTabScreen session={session} onLogout={onLogout} />;
+        return <DashboardTabScreen session={session} onLogout={onLogout} onNavigateTab={setActiveTabKey} />;
       case 'requests':
         return <RequestsTabScreen session={session} onLogout={onLogout} />;
       case 'reports':
@@ -43,11 +43,11 @@ export default function MainAppContainer({ session, onLogout }) {
       case 'stock':
         return <StockTabScreen session={session} onLogout={onLogout} />;
       case 'raise-requests':
-        return <RaiseRequestsTabScreen session={session} onLogout={onLogout} />;
+        return <RaiseRequestsTabScreen session={session} onLogout={onLogout} onNavigateTab={setActiveTabKey} />;
       case 'my-requisitions':
-        return <MyRequisitionsTabScreen session={session} onLogout={onLogout} />;
+        return <MyRequisitionsTabScreen session={session} onLogout={onLogout} onNavigateTab={setActiveTabKey} />;
       default:
-        return <DashboardTabScreen session={session} onLogout={onLogout} />;
+        return <DashboardTabScreen session={session} onLogout={onLogout} onNavigateTab={setActiveTabKey} />;
     }
   };
 

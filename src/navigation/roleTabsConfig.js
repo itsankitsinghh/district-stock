@@ -21,7 +21,7 @@ export const ROLE_TABS_CONFIG = {
   // Role 1: Admin
   'Admin': [
     { key: 'dashboard', label: 'Dashboard', icon: 'view-dashboard-outline', activeIcon: 'view-dashboard' },
-    { key: 'requests', label: 'Requests', icon: 'clipboard-list-outline', activeIcon: 'clipboard-list' },
+    { key: 'movement', label: 'Movement', icon: 'truck-fast-outline', activeIcon: 'truck-fast' },
     { key: 'reports', label: 'Reports', icon: 'chart-box-outline', activeIcon: 'chart-box' },
     { key: 'master', label: 'Master', icon: 'database-outline', activeIcon: 'database' },
     { key: 'user-setup', label: 'User Setup', icon: 'account-group-outline', activeIcon: 'account-group' },
@@ -30,7 +30,7 @@ export const ROLE_TABS_CONFIG = {
   // Role 2: Operations Manager
   'Operations Manager': [
     { key: 'dashboard', label: 'Dashboard', icon: 'view-dashboard-outline', activeIcon: 'view-dashboard' },
-    { key: 'requests', label: 'Requests', icon: 'clipboard-list-outline', activeIcon: 'clipboard-list' },
+    { key: 'movement', label: 'Movement', icon: 'truck-fast-outline', activeIcon: 'truck-fast' },
     { key: 'reports', label: 'Reports', icon: 'chart-box-outline', activeIcon: 'chart-box' },
     { key: 'master', label: 'Master', icon: 'database-outline', activeIcon: 'database' },
     { key: 'user-setup', label: 'User Setup', icon: 'account-group-outline', activeIcon: 'account-group' },
@@ -64,15 +64,37 @@ export const ROLE_TABS_CONFIG = {
  * Get tabs for a given role, falling back to Admin if undefined
  */
 export function getTabsForRole(role) {
+  if (!role) return ROLE_TABS_CONFIG['Admin'];
+  
   if (ROLE_TABS_CONFIG[role]) {
     return ROLE_TABS_CONFIG[role];
   }
+
+  // Handle aliases from Figma / SVG
+  const normalized = role.toLowerCase().trim();
+  if (normalized.includes('warehouse') && normalized.includes('ground')) {
+    return ROLE_TABS_CONFIG['Ground User — Warehouse'];
+  }
+  if (normalized.includes('event') && normalized.includes('ground')) {
+    return ROLE_TABS_CONFIG['Ground User — Event'];
+  }
+  if (normalized.includes('planner')) {
+    return ROLE_TABS_CONFIG['Event Planner'];
+  }
+  if (normalized.includes('operations')) {
+    return ROLE_TABS_CONFIG['Operations Manager'];
+  }
+  if (normalized.includes('admin')) {
+    return ROLE_TABS_CONFIG['Admin'];
+  }
+
   // Case-insensitive / partial match safety fallback
   const found = Object.keys(ROLE_TABS_CONFIG).find(
-    (r) => r.toLowerCase() === (role || '').toLowerCase()
+    (r) => r.toLowerCase() === normalized
   );
   if (found) {
     return ROLE_TABS_CONFIG[found];
   }
   return ROLE_TABS_CONFIG['Admin'];
 }
+

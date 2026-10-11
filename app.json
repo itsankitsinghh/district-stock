@@ -23,7 +23,21 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow District Stock to access your camera to scan barcodes and document item condition."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow District Stock to access your photos.",
+          "cameraPermission": "Allow District Stock to use your camera to take damage photos."
+        }
+      ],
+      "expo-sharing"
     ]
   }
 }
