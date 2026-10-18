@@ -31,6 +31,7 @@ const collections = {
   inbounds: 'inbounds.json',
   movements: 'movements.json',
   requisitions: 'requisitions.json',
+  master: 'master.json',
 };
 
 // Helper to read collection
@@ -38,14 +39,14 @@ function readCollection(name) {
   const filename = collections[name] || `${name}.json`;
   const filePath = path.join(DATA_DIR, filename);
   if (!fs.existsSync(filePath)) {
-    return [];
+    return name === 'master' ? { warehouses: [], products: [], events: [], requisitions: [] } : [];
   }
   try {
     const raw = fs.readFileSync(filePath, 'utf8');
     return JSON.parse(raw);
   } catch (e) {
     console.error(`Error reading ${filePath}:`, e);
-    return [];
+    return name === 'master' ? { warehouses: [], products: [], events: [], requisitions: [] } : [];
   }
 }
 
@@ -177,7 +178,9 @@ const server = http.createServer(async (req, res) => {
       try {
         const payload = await parseJsonBody(req);
         let itemsToSave = [];
-        if (Array.isArray(payload)) {
+        if (collectionName === 'master' && typeof payload === 'object') {
+          itemsToSave = payload;
+        } else if (Array.isArray(payload)) {
           itemsToSave = payload;
         } else if (payload && Array.isArray(payload.data)) {
           itemsToSave = payload.data;
@@ -185,10 +188,10 @@ const server = http.createServer(async (req, res) => {
           // If single object, append or update
           const existing = readCollection(collectionName);
           const id = payload.id || payload.userId || payload.code || payload.consignmentNo;
-          const idx = id ? existing.findIndex((x) => (x.id || x.userId || x.code || x.consignmentNo) === id) : -1;
+          const idx = id && Array.isArray(existing) ? existing.findIndex((x) => (x.id || x.userId || x.code || x.consignmentNo) === id) : -1;
           if (idx >= 0) {
             existing[idx] = { ...existing[idx], ...payload, updatedAt: new Date().toISOString() };
-          } else {
+          } else if (Array.isArray(existing)) {
             existing.push({ ...payload, createdAt: payload.createdAt || new Date().toISOString() });
           }
           itemsToSave = existing;
