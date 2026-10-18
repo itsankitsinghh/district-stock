@@ -1,297 +1,129 @@
-// Master Data Service for District Stock
-// Manages Products, Warehouses, Events, Categories, and Product Types
+import { authService } from './authService';
+import { storageHelper } from './storageHelper';
+
+const MASTER_STORAGE_FILENAME = 'district_stock_master_v1.json';
 
 class MasterService {
   constructor() {
     this.categories = [
-      { id: 'CAT-001', name: 'Electronics', status: 'active' },
-      { id: 'CAT-002', name: 'Event Branding', status: 'active' },
-      { id: 'CAT-003', name: 'Furniture', status: 'active' },
-      { id: 'CAT-004', name: 'Sound & Audio', status: 'active' },
-      { id: 'CAT-005', name: 'Lighting & Truss', status: 'active' },
+      { id: 'CAT-001', name: 'Electronic', status: 'active' },
+      { id: 'CAT-002', name: 'Books', status: 'active' },
+      { id: 'CAT-003', name: 'Test', status: 'active' },
+      { id: 'CAT-004', name: 'Furniture', status: 'active' },
+      { id: 'CAT-005', name: 'Lighting', status: 'active' },
     ];
-
     this.productTypes = [
-      { id: 'PT-001', name: 'Countable', description: 'Tracked by quantity count', status: 'active' },
-      { id: 'PT-002', name: 'Consumable', description: 'Single-use event items', status: 'active' },
-      { id: 'PT-003', name: 'Serial Track', description: 'Individual barcode/serial identifier', status: 'active' },
+      { id: 'PT-001', name: 'Countable Asset', description: 'Countable item', status: 'active' },
+      { id: 'PT-002', name: 'Serialized Asset', description: 'Barcode tracked item', status: 'active' },
     ];
+    this.products = [];
+    this.stockActionLogs = [];
+    this.warehouses = [];
+    this.events = [];
+    this.requisitions = [];
+    this.reportsHistory = [];
+    this.scheduledReports = [];
+    this.subscribers = [];
+    this.isInitialized = false;
+    this.initPromise = null;
+    this.init();
+  }
 
-    this.products = [
-      {
-        id: 'PRD-001',
-        name: 'Item 22',
-        sku: 'TEST',
-        lotNumber: 'LOT-AN-101',
-        trackingType: 'Countable',
-        category: 'Electronics',
-        uom: 'Pieces (Pcs)',
-        lowStockAlert: 10,
-        unitPrice: 1500,
-        availableQty: 45,
-        damagedQty: 2,
-        reservedQty: 8,
-        totalQty: 55,
-        returnability: 'Returnable',
-        notes: 'Standard staging accessory',
-        status: 'active',
-      },
-      {
-        id: 'PRD-002',
-        name: 'Portable Speaker',
-        sku: 'AUD-002',
-        lotNumber: 'LOT-AUD-88B',
-        trackingType: 'Serial',
-        category: 'Sound & Audio',
-        uom: 'Pieces (Pcs)',
-        lowStockAlert: 5,
-        unitPrice: 4200,
-        availableQty: 18,
-        damagedQty: 1,
-        reservedQty: 4,
-        totalQty: 23,
-        returnability: 'Returnable',
-        notes: 'High-power battery outdoor audio',
-        status: 'active',
-      },
-      {
-        id: 'PRD-003',
-        name: 'Event Banner',
-        sku: 'BRD-008',
-        lotNumber: 'LOT-BRD-55C',
-        trackingType: 'Consumable',
-        category: 'Event Branding',
-        uom: 'Pieces (Pcs)',
-        lowStockAlert: 20,
-        unitPrice: 850,
-        availableQty: 80,
-        damagedQty: 0,
-        reservedQty: 15,
-        totalQty: 95,
-        returnability: 'Consumable',
-        notes: 'District neon branded vinyl banner',
-        status: 'active',
-      },
-      {
-        id: 'PRD-004',
-        name: 'Folding VIP Chair',
-        sku: 'FUR-019',
-        lotNumber: 'LOT-FUR-12D',
-        trackingType: 'Countable',
-        category: 'Furniture',
-        uom: 'Pieces (Pcs)',
-        lowStockAlert: 15,
-        unitPrice: 1200,
-        availableQty: 120,
-        damagedQty: 6,
-        reservedQty: 30,
-        totalQty: 156,
-        returnability: 'Returnable',
-        notes: 'Padded black VIP seating',
-        status: 'active',
-      },
-      {
-        id: 'PRD-005',
-        name: 'LED Spotlight 200W',
-        sku: 'LGT-004',
-        lotNumber: 'LOT-LGT-77E',
-        trackingType: 'Serial',
-        category: 'Lighting & Truss',
-        uom: 'Pieces (Pcs)',
-        lowStockAlert: 8,
-        unitPrice: 3100,
-        availableQty: 28,
-        damagedQty: 3,
-        reservedQty: 6,
-        totalQty: 37,
-        returnability: 'Returnable',
-        notes: 'RGB Stage spotlight with DMX support',
-        status: 'active',
-      },
-    ];
+  subscribe(callback) {
+    if (typeof callback !== 'function') return () => {};
+    this.subscribers.push(callback);
+    return () => {
+      this.subscribers = this.subscribers.filter((cb) => cb !== callback);
+    };
+  }
 
-    this.stockActionLogs = [
-      {
-        id: 'DMG-1001',
-        productId: 'PRD-004',
-        productName: 'Folding VIP Chair',
-        sku: 'FUR-019',
-        type: 'DAMAGED',
-        quantity: 2,
-        reason: 'Crushed',
-        photos: [],
-        note: 'Damaged during return transit from JLN Stadium',
-        timestamp: '10 Oct 2026, 04:30 PM',
-        user: 'Ground User',
-      },
-    ];
+  notifySubscribers(data) {
+    this.subscribers.forEach((cb) => {
+      try {
+        cb(data);
+      } catch (err) {
+        console.warn('[MasterService] subscriber error:', err);
+      }
+    });
+  }
 
-    this.warehouses = [
-      {
-        id: 'WH-001',
-        code: 'WH-001',
-        name: 'North Central Hub',
-        city: 'New Delhi',
-        address: 'Sector 18, Industrial Area',
-        status: 'active',
-      },
-      {
-        id: 'WH-002',
-        code: 'WH-002',
-        name: 'West Regional Hub',
-        city: 'Mumbai',
-        address: 'Bhiwandi Logistics Park',
-        status: 'active',
-      },
-      {
-        id: 'WH-003',
-        code: 'WH-003',
-        name: 'JLN Stadium Store',
-        city: 'New Delhi',
-        address: 'Gate 4, JLN Stadium Complex',
-        status: 'active',
-      },
-      {
-        id: 'WH-004',
-        code: 'WH-004',
-        name: 'Vagator Beach Arena Store',
-        city: 'Goa',
-        address: 'Near Sunburn Arena, Vagator',
-        status: 'active',
-      },
-    ];
+  async init() {
+    if (this.isInitialized) return;
+    if (this.initPromise) return this.initPromise;
 
-    this.events = [
-      {
-        id: 'EV-001',
-        code: 'EV-001',
-        name: 'City Music Fest',
-        venue: 'Mumbai · Jio Garden',
-        dates: '10–12 Oct',
-        planner: 'Sneha Patil',
-        status: 'Upcoming',
-      },
-      {
-        id: 'EV-002',
-        code: 'EV-002',
-        name: 'Brand Launch',
-        venue: 'Pune · Hyatt Regency',
-        dates: '18 Oct',
-        planner: 'Sneha Patil',
-        status: 'Active',
-      },
-      {
-        id: 'EV-003',
-        code: 'EV-003',
-        name: 'Sports Weekend',
-        venue: 'Goa · Fatorda Stadium',
-        dates: '25–26 Oct',
-        planner: 'Sneha Patil',
-        status: 'Upcoming',
-      },
-    ];
+    this.initPromise = (async () => {
+      try {
+        const parsed = await storageHelper.readData(MASTER_STORAGE_FILENAME, null);
+        if (parsed) {
+          if (Array.isArray(parsed.products)) {
+            this.products = parsed.products;
+          }
+          if (Array.isArray(parsed.warehouses)) {
+            // Strictly retain all user warehouses - never filter or wipe them!
+            this.warehouses = parsed.warehouses;
+          }
+          if (Array.isArray(parsed.events)) this.events = parsed.events;
+          if (Array.isArray(parsed.categories)) this.categories = parsed.categories;
+          if (Array.isArray(parsed.productTypes)) this.productTypes = parsed.productTypes;
+          if (Array.isArray(parsed.requisitions)) this.requisitions = parsed.requisitions;
+          if (Array.isArray(parsed.stockActionLogs)) this.stockActionLogs = parsed.stockActionLogs;
+          if (Array.isArray(parsed.reportsHistory)) this.reportsHistory = parsed.reportsHistory;
+          if (Array.isArray(parsed.scheduledReports)) this.scheduledReports = parsed.scheduledReports;
+        }
 
-    this.requisitions = [
-      {
-        id: 'REQ-0001',
-        eventCode: 'EV-001',
-        eventName: 'Summer Music Festival',
-        eventDate: '10–15 Oct 2026',
-        requestedDate: '10 Oct',
-        neededDate: '15 Oct',
-        progress: 0.24,
-        items: [
-          { productId: 'PRD-004', name: 'Folding VIP Chair', uom: 'Pieces (Pcs)', qty: 30, fulfilledQty: 0 },
-          { productId: 'PRD-002', name: 'Portable Speaker', uom: 'Pieces (Pcs)', qty: 6, fulfilledQty: 0 },
-        ],
-        requiredDate: '15/10/2026',
-        deliveryLocation: 'Mumbai · Jio Garden BKC',
-        pocName: 'Sneha Patil',
-        pocNo: '9820198201',
-        status: 'In Review',
-        submittedAt: '10 Oct 2026, 11:30 AM',
-        planner: 'Sneha Patil',
-      },
-      {
-        id: 'REQ-0002',
-        eventCode: 'EV-002',
-        eventName: 'Food Carnival',
-        eventDate: '08–12 Oct 2026',
-        requestedDate: '08 Oct',
-        neededDate: '12 Oct',
-        progress: 0.55,
-        items: [
-          { productId: 'PRD-003', name: 'Event Banner', uom: 'Pieces (Pcs)', qty: 15, fulfilledQty: 10 },
-          { productId: 'PRD-005', name: 'LED Spotlight 200W', uom: 'Pieces (Pcs)', qty: 8, fulfilledQty: 4 },
-        ],
-        requiredDate: '12/10/2026',
-        deliveryLocation: 'Pune · Hyatt Regency Complex',
-        pocName: 'Sneha Patil',
-        pocNo: '9820198201',
-        status: 'Partially Fulfilled',
-        submittedAt: '08 Oct 2026, 02:15 PM',
-        planner: 'Sneha Patil',
-      },
-      {
-        id: 'REQ-0003',
-        eventCode: 'EV-003',
-        eventName: 'College Fest',
-        eventDate: '06–09 Oct 2026',
-        requestedDate: '06 Oct',
-        neededDate: '09 Oct',
-        progress: 1.0,
-        items: [
-          { productId: 'PRD-001', name: 'Item 22', uom: 'Pieces (Pcs)', qty: 20, fulfilledQty: 20 },
-          { productId: 'PRD-004', name: 'Folding VIP Chair', uom: 'Pieces (Pcs)', qty: 50, fulfilledQty: 50 },
-        ],
-        requiredDate: '09/10/2026',
-        deliveryLocation: 'Goa · Fatorda Campus Grounds',
-        pocName: 'Sneha Patil',
-        pocNo: '9820198201',
-        status: 'Fulfilled',
-        submittedAt: '06 Oct 2026, 09:45 AM',
-        planner: 'Sneha Patil',
-      },
-      {
-        id: 'REQ-0004',
-        eventCode: 'EV-001',
-        eventName: 'City Music Fest',
-        eventDate: '10–12 Oct 2026',
-        requestedDate: '09 Oct',
-        neededDate: '11 Oct',
-        progress: 0.20,
-        items: [
-          { productId: 'PRD-005', name: 'LED Spotlight 200W', uom: 'Pieces (Pcs)', qty: 10, fulfilledQty: 2 },
-        ],
-        requiredDate: '11/10/2026',
-        deliveryLocation: 'Mumbai · Jio Garden Stage 2',
-        pocName: 'Sneha Patil',
-        pocNo: '9820198201',
-        status: 'In Review',
-        submittedAt: '09 Oct 2026, 04:20 PM',
-        planner: 'Sneha Patil',
-      },
-      {
-        id: 'REQ-0005',
-        eventCode: 'EV-002',
-        eventName: 'Brand Launch 2026',
-        eventDate: '18 Oct 2026',
-        requestedDate: '10 Oct',
-        neededDate: '17 Oct',
-        progress: 0.60,
-        items: [
-          { productId: 'PRD-003', name: 'Event Banner', uom: 'Pieces (Pcs)', qty: 8, fulfilledQty: 5 },
-          { productId: 'PRD-002', name: 'Portable Speaker', uom: 'Pieces (Pcs)', qty: 4, fulfilledQty: 2 },
-        ],
-        requiredDate: '17/10/2026',
-        deliveryLocation: 'Pune · Hyatt Regency Main Hall',
-        pocName: 'Sneha Patil',
-        pocNo: '9820198201',
-        status: 'Partially Fulfilled',
-        submittedAt: '10 Oct 2026, 06:10 PM',
-        planner: 'Sneha Patil',
-      },
-    ];
+        // Sync all active warehouses with Admin and active events with Event Planner
+        const activeWhs = this.warehouses.filter((w) => (w.status || 'active').toLowerCase() === 'active');
+        const activeEvs = this.events.filter((e) => (e.status || 'active').toLowerCase() === 'active');
+        if (authService) {
+          try {
+            if (authService.init) await authService.init();
+            if (authService.syncMasterAssignments) await authService.syncMasterAssignments(activeWhs, activeEvs);
+          } catch (_) {}
+        }
+      } catch (e) {
+        console.warn('[MasterService] init storage error:', e);
+      } finally {
+        this.isInitialized = true;
+        this.initPromise = null;
+        this.notifySubscribers({
+          type: 'MASTER_INITIALIZED',
+          warehouses: this.warehouses,
+          products: this.products,
+          events: this.events,
+        });
+      }
+    })();
+
+    return this.initPromise;
+  }
+
+  async writeToDisk() {
+    try {
+      await storageHelper.writeData(MASTER_STORAGE_FILENAME, {
+        products: this.products,
+        warehouses: this.warehouses,
+        events: this.events,
+        categories: this.categories,
+        productTypes: this.productTypes,
+        requisitions: this.requisitions,
+        stockActionLogs: this.stockActionLogs,
+        reportsHistory: this.reportsHistory,
+        scheduledReports: this.scheduledReports,
+      });
+    } catch (err) {
+      console.warn('[MasterService] writeToDisk error:', err);
+    }
+  }
+
+  async persist() {
+    try {
+      if (!this.isInitialized) {
+        await this.init();
+      }
+      await this.writeToDisk();
+    } catch (e) {
+      console.warn('[MasterService] persist error:', e);
+    }
   }
 
   // --- Products ---
@@ -300,21 +132,31 @@ class MasterService {
   }
 
   addProduct(data) {
-    // Unique SKU validation
-    const skuExists = this.products.some(
-      (p) => p.sku.trim().toLowerCase() === data.sku.trim().toLowerCase()
-    );
-    if (skuExists) {
-      return { success: false, message: 'SKU code already exists. Please choose a unique SKU.' };
+    let finalSku = data.sku ? data.sku.trim().toUpperCase() : '';
+    if (!finalSku) {
+      const prefix = (data.name || 'PRD').replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() || 'PRD';
+      finalSku = `DST-${prefix}-${Math.floor(100 + Math.random() * 900)}`;
+      while (this.products.some((p) => p.sku.trim().toLowerCase() === finalSku.toLowerCase())) {
+        finalSku = `DST-${prefix}-${Math.floor(100 + Math.random() * 900)}`;
+      }
+    } else {
+      // Unique SKU validation
+      const skuExists = this.products.some(
+        (p) => p.sku.trim().toLowerCase() === finalSku.toLowerCase()
+      );
+      if (skuExists) {
+        return { success: false, message: 'SKU code already exists. Please choose a unique SKU.' };
+      }
     }
 
     const newId = `PRD-${String(this.products.length + 1).padStart(3, '0')}`;
     const newProduct = {
       id: newId,
       name: data.name.trim(),
-      sku: data.sku.trim().toUpperCase(),
+      sku: finalSku,
       trackingType: data.trackingType || 'Countable',
-      category: data.category || 'Electronics',
+      warehouse: data.warehouse ? data.warehouse.trim() : '',
+      category: data.category || 'General',
       uom: data.uom || 'Pieces (Pcs)',
       lowStockAlert: Number(data.lowStockAlert) || 10,
       unitPrice: Number(data.unitPrice) || 0,
@@ -323,6 +165,8 @@ class MasterService {
       status: data.status || 'active',
     };
     this.products.unshift(newProduct);
+    this.persist();
+    this.notifySubscribers({ type: 'PRODUCTS_UPDATED', products: this.products });
     return { success: true, product: newProduct };
   }
 
@@ -343,8 +187,11 @@ class MasterService {
     this.products[idx] = {
       ...this.products[idx],
       ...data,
+      warehouse: data.warehouse !== undefined ? data.warehouse.trim() : this.products[idx].warehouse,
       sku: data.sku ? data.sku.trim().toUpperCase() : this.products[idx].sku,
     };
+    this.persist();
+    this.notifySubscribers({ type: 'PRODUCTS_UPDATED', products: this.products });
     return { success: true, product: this.products[idx] };
   }
 
@@ -353,6 +200,8 @@ class MasterService {
     if (idx === -1) return { success: false };
     const current = this.products[idx].status;
     this.products[idx].status = current === 'active' ? 'inactive' : 'active';
+    this.persist();
+    this.notifySubscribers({ type: 'PRODUCTS_UPDATED', products: this.products });
     return { success: true, status: this.products[idx].status };
   }
 
@@ -360,6 +209,8 @@ class MasterService {
     const idx = this.products.findIndex((p) => p.id === id);
     if (idx === -1) return { success: false };
     this.products.splice(idx, 1);
+    this.persist();
+    this.notifySubscribers({ type: 'PRODUCTS_UPDATED', products: this.products });
     return { success: true };
   }
 
@@ -368,36 +219,89 @@ class MasterService {
     if (!userScope || userScope.length === 0) {
       return [...this.warehouses];
     }
-    // Filter authorized locations for Operations Manager
-    return this.warehouses.filter(
+    // Filter authorized locations for Operations Manager or scoped users if provided
+    const filtered = this.warehouses.filter(
       (w) => userScope.includes(w.name) || userScope.includes(w.code)
     );
+    return filtered.length > 0 ? filtered : [...this.warehouses];
   }
 
   addWarehouse(data) {
-    const codeExists = this.warehouses.some(
-      (w) => w.code.trim().toLowerCase() === data.code.trim().toLowerCase()
-    );
-    if (codeExists) {
-      return { success: false, message: 'Warehouse code already exists.' };
+    let finalCode = data.code ? data.code.trim().toUpperCase() : '';
+    if (!finalCode) {
+      const nextNum = String(this.warehouses.length + 1).padStart(3, '0');
+      finalCode = `WH-${nextNum}`;
+      while (this.warehouses.some((w) => w.code.trim().toLowerCase() === finalCode.toLowerCase())) {
+        finalCode = `WH-${Math.floor(100 + Math.random() * 900)}`;
+      }
+    } else {
+      const codeExists = this.warehouses.some(
+        (w) => w.code.trim().toLowerCase() === finalCode.toLowerCase()
+      );
+      if (codeExists) {
+        return { success: false, message: 'Warehouse code already exists.' };
+      }
     }
 
     const newWarehouse = {
-      id: data.code.trim().toUpperCase(),
-      code: data.code.trim().toUpperCase(),
+      id: finalCode,
+      code: finalCode,
       name: data.name.trim(),
-      city: data.city.trim(),
       address: data.address ? data.address.trim() : '',
+      zipCode: data.zipCode ? data.zipCode.trim() : '',
+      city: data.city ? data.city.trim() : '',
+      state: data.state ? data.state.trim() : '',
+      country: data.country ? data.country.trim() : 'India',
+      pocName: data.pocName ? data.pocName.trim() : '',
+      contactNo: data.contactNo ? data.contactNo.trim() : '',
       status: data.status || 'active',
     };
-    this.warehouses.push(newWarehouse);
+    this.warehouses.unshift(newWarehouse);
+    this.persist();
+
+    // Auto-link to Admin user's location assignment if active
+    if ((newWarehouse.status || 'active').toLowerCase() === 'active') {
+      if (authService && authService.linkWarehouseToAdmin) {
+        authService.linkWarehouseToAdmin(newWarehouse.name);
+      }
+    }
+
+    this.notifySubscribers({ type: 'WAREHOUSES_UPDATED', warehouses: this.warehouses });
     return { success: true, warehouse: newWarehouse };
   }
 
   updateWarehouse(id, data) {
     const idx = this.warehouses.findIndex((w) => w.id === id);
     if (idx === -1) return { success: false, message: 'Warehouse not found' };
-    this.warehouses[idx] = { ...this.warehouses[idx], ...data };
+    const oldName = this.warehouses[idx].name;
+    this.warehouses[idx] = {
+      ...this.warehouses[idx],
+      name: data.name !== undefined ? data.name.trim() : this.warehouses[idx].name,
+      code: data.code !== undefined ? data.code.trim().toUpperCase() : this.warehouses[idx].code,
+      address: data.address !== undefined ? data.address.trim() : this.warehouses[idx].address,
+      zipCode: data.zipCode !== undefined ? data.zipCode.trim() : this.warehouses[idx].zipCode,
+      city: data.city !== undefined ? data.city.trim() : this.warehouses[idx].city,
+      state: data.state !== undefined ? data.state.trim() : this.warehouses[idx].state,
+      country: data.country !== undefined ? data.country.trim() : this.warehouses[idx].country,
+      pocName: data.pocName !== undefined ? data.pocName.trim() : this.warehouses[idx].pocName,
+      contactNo: data.contactNo !== undefined ? data.contactNo.trim() : this.warehouses[idx].contactNo,
+      status: data.status !== undefined ? data.status : this.warehouses[idx].status,
+    };
+    this.persist();
+
+    const updated = this.warehouses[idx];
+    if (authService) {
+      if (oldName !== updated.name) {
+        authService.unlinkWarehouseFromAdmin?.(oldName);
+      }
+      if ((updated.status || '').toLowerCase() === 'active') {
+        authService.linkWarehouseToAdmin?.(updated.name);
+      } else {
+        authService.unlinkWarehouseFromAdmin?.(updated.name);
+      }
+    }
+
+    this.notifySubscribers({ type: 'WAREHOUSES_UPDATED', warehouses: this.warehouses });
     return { success: true, warehouse: this.warehouses[idx] };
   }
 
@@ -406,13 +310,29 @@ class MasterService {
     if (idx === -1) return { success: false };
     const current = this.warehouses[idx].status;
     this.warehouses[idx].status = current === 'active' ? 'inactive' : 'active';
+    this.persist();
+    const wh = this.warehouses[idx];
+    if (authService) {
+      if (wh.status === 'active') {
+        authService.linkWarehouseToAdmin?.(wh.name);
+      } else {
+        authService.unlinkWarehouseFromAdmin?.(wh.name);
+      }
+    }
+    this.notifySubscribers({ type: 'WAREHOUSES_UPDATED', warehouses: this.warehouses });
     return { success: true, status: this.warehouses[idx].status };
   }
 
   deleteWarehouse(id) {
     const idx = this.warehouses.findIndex((w) => w.id === id);
     if (idx === -1) return { success: false };
+    const whName = this.warehouses[idx].name;
     this.warehouses.splice(idx, 1);
+    this.persist();
+    if (authService && authService.unlinkWarehouseFromAdmin) {
+      authService.unlinkWarehouseFromAdmin(whName);
+    }
+    this.notifySubscribers({ type: 'WAREHOUSES_UPDATED', warehouses: this.warehouses });
     return { success: true };
   }
 
@@ -422,45 +342,124 @@ class MasterService {
   }
 
   addEvent(data) {
-    const codeExists = this.events.some(
-      (e) => e.code.trim().toLowerCase() === data.code.trim().toLowerCase()
-    );
-    if (codeExists) {
-      return { success: false, message: 'Event code already exists.' };
+    let finalCode = data.code ? data.code.trim().toUpperCase() : '';
+    if (!finalCode) {
+      const nextNum = String(this.events.length + 1).padStart(3, '0');
+      finalCode = `EV-${nextNum}`;
+      while (this.events.some((e) => e.code.trim().toLowerCase() === finalCode.toLowerCase())) {
+        finalCode = `EV-${Math.floor(100 + Math.random() * 900)}`;
+      }
+    } else {
+      const codeExists = this.events.some(
+        (e) => e.code.trim().toLowerCase() === finalCode.toLowerCase()
+      );
+      if (codeExists) {
+        return { success: false, message: 'Event code already exists. Please choose a unique code.' };
+      }
     }
 
     const newEvent = {
-      id: data.code.trim().toUpperCase(),
-      code: data.code.trim().toUpperCase(),
-      name: data.name.trim(),
-      venue: data.venue.trim(),
-      dates: data.dates.trim(),
-      planner: data.planner || 'Sneha Patil',
-      status: data.status || 'Upcoming',
+      id: finalCode,
+      code: finalCode,
+      name: data.name && data.name.trim() ? data.name.trim() : finalCode,
+      address: data.address ? data.address.trim() : (data.venue || ''),
+      venue: data.address ? data.address.trim() : (data.venue || ''),
+      zipCode: data.zipCode ? data.zipCode.trim() : '',
+      city: data.city ? data.city.trim() : '',
+      state: data.state ? data.state.trim() : '',
+      country: data.country ? data.country.trim() : 'India',
+      pocName: data.pocName ? data.pocName.trim() : '',
+      contactNo: data.contactNo ? data.contactNo.trim() : '',
+      dates: data.dates ? data.dates.trim() : 'Scheduled',
+      planner: data.planner || data.pocName || 'Lead Planner',
+      status: data.status || 'active',
     };
-    this.events.push(newEvent);
+    this.events.unshift(newEvent);
+    this.persist();
+
+    // Auto-link to Event Planner user's location assignment if active
+    if ((newEvent.status || 'active').toLowerCase() === 'active') {
+      if (authService && authService.linkEventToEventPlanner) {
+        authService.linkEventToEventPlanner(newEvent.name);
+      }
+    }
+
     return { success: true, event: newEvent };
   }
 
   updateEvent(id, data) {
-    const idx = this.events.findIndex((e) => e.id === id);
+    const idx = this.events.findIndex((e) => e.id === id || e.code === id);
     if (idx === -1) return { success: false, message: 'Event not found' };
-    this.events[idx] = { ...this.events[idx], ...data };
+
+    // Unique code check if changed
+    if (data.code && data.code.trim().toUpperCase() !== this.events[idx].code) {
+      const codeExists = this.events.some(
+        (e) => (e.id !== id && e.code !== id) && e.code.trim().toLowerCase() === data.code.trim().toLowerCase()
+      );
+      if (codeExists) {
+        return { success: false, message: 'Event code already in use by another event.' };
+      }
+    }
+
+    const oldName = this.events[idx].name;
+    const updatedCode = data.code !== undefined ? data.code.trim().toUpperCase() : this.events[idx].code;
+    this.events[idx] = {
+      ...this.events[idx],
+      code: updatedCode,
+      name: data.name !== undefined ? (data.name.trim() || updatedCode) : this.events[idx].name,
+      address: data.address !== undefined ? data.address.trim() : this.events[idx].address,
+      venue: data.address !== undefined ? data.address.trim() : this.events[idx].venue,
+      zipCode: data.zipCode !== undefined ? data.zipCode.trim() : this.events[idx].zipCode,
+      city: data.city !== undefined ? data.city.trim() : this.events[idx].city,
+      state: data.state !== undefined ? data.state.trim() : this.events[idx].state,
+      country: data.country !== undefined ? data.country.trim() : this.events[idx].country,
+      pocName: data.pocName !== undefined ? data.pocName.trim() : this.events[idx].pocName,
+      contactNo: data.contactNo !== undefined ? data.contactNo.trim() : this.events[idx].contactNo,
+      status: data.status !== undefined ? data.status : this.events[idx].status,
+    };
+    this.persist();
+
+    const updated = this.events[idx];
+    if (authService) {
+      if (oldName !== updated.name) {
+        authService.unlinkEventFromEventPlanner?.(oldName);
+      }
+      if ((updated.status || '').toLowerCase() === 'active') {
+        authService.linkEventToEventPlanner?.(updated.name);
+      } else {
+        authService.unlinkEventFromEventPlanner?.(updated.name);
+      }
+    }
+
     return { success: true, event: this.events[idx] };
   }
 
   toggleEventStatus(id) {
-    const idx = this.events.findIndex((e) => e.id === id);
+    const idx = this.events.findIndex((e) => e.id === id || e.code === id);
     if (idx === -1) return { success: false };
-    const current = this.events[idx].status;
-    this.events[idx].status = current === 'Active' ? 'Upcoming' : 'Active';
+    const current = (this.events[idx].status || '').toLowerCase();
+    this.events[idx].status = current === 'active' ? 'inactive' : 'active';
+    this.persist();
+    const ev = this.events[idx];
+    if (authService) {
+      if (ev.status === 'active') {
+        authService.linkEventToEventPlanner?.(ev.name);
+      } else {
+        authService.unlinkEventFromEventPlanner?.(ev.name);
+      }
+    }
     return { success: true, status: this.events[idx].status };
   }
 
   deleteEvent(id) {
-    const idx = this.events.findIndex((e) => e.id === id);
+    const idx = this.events.findIndex((e) => e.id === id || e.code === id);
     if (idx === -1) return { success: false };
+    const evName = this.events[idx].name;
     this.events.splice(idx, 1);
+    this.persist();
+    if (authService && authService.unlinkEventFromEventPlanner) {
+      authService.unlinkEventFromEventPlanner(evName);
+    }
     return { success: true };
   }
 
@@ -626,6 +625,41 @@ class MasterService {
     return { success: true, product: p, log };
   }
 
+  addInboundStock(productLines, inboundNo = '') {
+    if (!Array.isArray(productLines)) return;
+    productLines.forEach((line) => {
+      const idx = this.products.findIndex(
+        (p) =>
+          (line.productId && p.id === line.productId) ||
+          (line.sku && p.sku && p.sku.trim().toLowerCase() === line.sku.trim().toLowerCase()) ||
+          (line.productName && p.name && p.name.trim().toLowerCase() === line.productName.trim().toLowerCase())
+      );
+      const qtyToAdd = parseInt(line.putawayQty || line.receivedQty, 10) || 0;
+      if (idx !== -1 && qtyToAdd > 0) {
+        this.products[idx].availableQty = (this.products[idx].availableQty || 0) + qtyToAdd;
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const log = {
+          id: `INB-STK-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+          productId: this.products[idx].id,
+          productName: this.products[idx].name,
+          sku: this.products[idx].sku,
+          type: 'AVAILABLE',
+          quantity: qtyToAdd,
+          reason: `Inbound Putaway Completed (${inboundNo || 'Consignment'})`,
+          note: `Received into inventory via Inbound ${inboundNo || ''}`,
+          timestamp: `${timeStr}, ${dateStr}`,
+          user: 'Warehouse User',
+        };
+        if (!this.stockActionLogs) this.stockActionLogs = [];
+        this.stockActionLogs.unshift(log);
+      }
+    });
+    this.persist();
+    this.notifySubscribers({ type: 'PRODUCTS_UPDATED', products: this.products });
+  }
+
   getStockActionLogs() {
     return this.stockActionLogs || [];
   }
@@ -633,277 +667,10 @@ class MasterService {
   // --- Reports Module (INCIFLO WMS Flow) ---
   initReportsData() {
     if (!this.reportsHistory) {
-      this.reportsHistory = [
-        {
-          id: 'RPT-1001',
-          reportName: 'Stock Inventory Report',
-          warehouse: 'Sagar Complex Warehouse',
-          fromDate: 'Jul 1, 2026',
-          toDate: 'Oct 11, 2026',
-          downloadedBy: 'Demo1',
-          generatedTime: 'Oct 11, 2026 00:10',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 142,
-          fileSize: '2.4 MB',
-        },
-        {
-          id: 'RPT-1002',
-          reportName: 'Stock Movement Report',
-          warehouse: 'Sagar Complex Warehouse',
-          fromDate: 'Jul 7, 2026',
-          toDate: 'Oct 10, 2026',
-          downloadedBy: 'Demo1',
-          generatedTime: 'Oct 11, 2026 00:05',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 88,
-          fileSize: '1.8 MB',
-        },
-        {
-          id: 'RPT-1003',
-          reportName: 'Stock Movement Report',
-          warehouse: 'TESTIND-AUG26',
-          fromDate: 'Aug 1, 2026',
-          toDate: 'Sep 5, 2026',
-          downloadedBy: 'Demo1',
-          generatedTime: 'Sep 5, 2026 14:53',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 230,
-          fileSize: '3.8 MB',
-        },
-        {
-          id: 'RPT-1004',
-          reportName: 'Task & User Activity Report',
-          warehouse: 'Sagar Complex Warehouse',
-          fromDate: 'Jul 1, 2026',
-          toDate: 'Aug 31, 2026',
-          downloadedBy: 'Demo1',
-          generatedTime: 'Sep 4, 2026 17:59',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 65,
-          fileSize: '1.2 MB',
-        },
-        {
-          id: 'RPT-1005',
-          reportName: 'Task & User Activity Report',
-          warehouse: "QA Singh's Warehouse",
-          fromDate: 'Jul 1, 2026',
-          toDate: 'Sep 3, 2026',
-          downloadedBy: 'Demo1',
-          generatedTime: 'Sep 3, 2026 18:19',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 42,
-          fileSize: '950 KB',
-        },
-        {
-          id: 'RPT-1006',
-          reportName: 'Event Stock Reconciliation Report',
-          warehouse: 'Sagar Complex Warehouse',
-          fromDate: 'Jun 1, 2026',
-          toDate: 'Sep 3, 2026',
-          downloadedBy: 'Demo1',
-          generatedTime: 'Sep 3, 2026 18:15',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 54,
-          fileSize: '1.4 MB',
-        },
-        {
-          id: 'RPT-1007',
-          reportName: 'Request Fulfillment Report',
-          warehouse: 'Sagar Complex Warehouse',
-          fromDate: 'Jul 1, 2026',
-          toDate: 'Aug 31, 2026',
-          downloadedBy: 'Demo1',
-          generatedTime: 'Sep 3, 2026 16:06',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 76,
-          fileSize: '1.6 MB',
-        },
-        {
-          id: 'RPT-1008',
-          reportName: 'Stock Inventory Report',
-          warehouse: 'Warehouse A - Central Staging',
-          fromDate: 'Jun 15, 2026',
-          toDate: 'Aug 30, 2026',
-          downloadedBy: 'Rahul Kumar',
-          generatedTime: 'Aug 30, 2026 14:20',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 112,
-          fileSize: '2.1 MB',
-        },
-        {
-          id: 'RPT-1009',
-          reportName: 'Stock Movement Report',
-          warehouse: 'Sagar Complex Warehouse',
-          fromDate: 'May 1, 2026',
-          toDate: 'Jul 31, 2026',
-          downloadedBy: 'Amit More',
-          generatedTime: 'Aug 1, 2026 10:15',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 180,
-          fileSize: '3.1 MB',
-        },
-        {
-          id: 'RPT-1010',
-          reportName: 'Task & User Activity Report',
-          warehouse: 'TESTIND-AUG26',
-          fromDate: 'May 10, 2026',
-          toDate: 'Jul 20, 2026',
-          downloadedBy: 'Sneha Patil',
-          generatedTime: 'Jul 22, 2026 16:45',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 95,
-          fileSize: '1.7 MB',
-        },
-        {
-          id: 'RPT-1011',
-          reportName: 'Event Stock Reconciliation Report',
-          warehouse: 'Warehouse A - Central Staging',
-          fromDate: 'May 1, 2026',
-          toDate: 'Jun 30, 2026',
-          downloadedBy: 'Vikram Singh',
-          generatedTime: 'Jul 2, 2026 11:30',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 68,
-          fileSize: '1.3 MB',
-        },
-        {
-          id: 'RPT-1012',
-          reportName: 'Request Fulfillment Report',
-          warehouse: 'TESTIND-AUG26',
-          fromDate: 'Apr 1, 2026',
-          toDate: 'Jun 15, 2026',
-          downloadedBy: 'Demo1',
-          generatedTime: 'Jun 16, 2026 15:10',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 140,
-          fileSize: '2.5 MB',
-        },
-        {
-          id: 'RPT-1013',
-          reportName: 'Stock Inventory Report',
-          warehouse: 'Sagar Complex Warehouse',
-          fromDate: 'Mar 1, 2026',
-          toDate: 'May 31, 2026',
-          downloadedBy: 'Amit More',
-          generatedTime: 'Jun 1, 2026 09:40',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 160,
-          fileSize: '2.8 MB',
-        },
-        {
-          id: 'RPT-1014',
-          reportName: 'Stock Movement Report',
-          warehouse: "QA Singh's Warehouse",
-          fromDate: 'Feb 15, 2026',
-          toDate: 'Apr 30, 2026',
-          downloadedBy: 'Rahul Kumar',
-          generatedTime: 'May 2, 2026 18:00',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 205,
-          fileSize: '3.4 MB',
-        },
-        {
-          id: 'RPT-1015',
-          reportName: 'Task & User Activity Report',
-          warehouse: 'Sagar Complex Warehouse',
-          fromDate: 'Jan 1, 2026',
-          toDate: 'Mar 31, 2026',
-          downloadedBy: 'Demo1',
-          generatedTime: 'Apr 1, 2026 12:20',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 125,
-          fileSize: '2.0 MB',
-        },
-        {
-          id: 'RPT-1016',
-          reportName: 'Event Stock Reconciliation Report',
-          warehouse: 'TESTIND-AUG26',
-          fromDate: 'Jan 15, 2026',
-          toDate: 'Feb 28, 2026',
-          downloadedBy: 'Sneha Patil',
-          generatedTime: 'Mar 2, 2026 17:05',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 45,
-          fileSize: '980 KB',
-        },
-        {
-          id: 'RPT-1017',
-          reportName: 'Request Fulfillment Report',
-          warehouse: 'Sagar Complex Warehouse',
-          fromDate: 'Jan 1, 2026',
-          toDate: 'Jan 31, 2026',
-          downloadedBy: 'Vikram Singh',
-          generatedTime: 'Feb 1, 2026 14:15',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 89,
-          fileSize: '1.5 MB',
-        },
-        {
-          id: 'RPT-1018',
-          reportName: 'Stock Inventory Report',
-          warehouse: 'TESTIND-AUG26',
-          fromDate: 'Dec 1, 2025',
-          toDate: 'Dec 31, 2025',
-          downloadedBy: 'Demo1',
-          generatedTime: 'Jan 2, 2026 10:00',
-          status: 'COMPLETED',
-          format: 'XLSX',
-          recordsCount: 135,
-          fileSize: '2.3 MB',
-        },
-      ];
+      this.reportsHistory = [];
     }
-
     if (!this.scheduledReports) {
-      this.scheduledReports = [
-        {
-          id: 'SCH-001',
-          reportName: 'Live Stock & Inventory',
-          warehouse: 'Sagar Complex Warehouse',
-          frequency: 'Daily',
-          time: '08:00 AM',
-          recipients: 'ops@districtstock.com',
-          status: 'Active',
-          lastRun: 'Today, 08:00 AM',
-        },
-        {
-          id: 'SCH-002',
-          reportName: 'Inward Outward Movement',
-          warehouse: 'All Warehouses',
-          frequency: 'Weekly',
-          time: 'Mon 09:00 AM',
-          recipients: 'manager@districtstock.com',
-          status: 'Active',
-          lastRun: 'Oct 6, 2026',
-        },
-        {
-          id: 'SCH-003',
-          reportName: 'Pallet Occupancy Report',
-          warehouse: 'TESTIND-AUG26',
-          frequency: 'Monthly',
-          time: '1st of Month, 10:00 AM',
-          recipients: 'audit@districtstock.com',
-          status: 'Paused',
-          lastRun: 'Oct 1, 2026',
-        },
-      ];
+      this.scheduledReports = [];
     }
   }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -13,92 +13,158 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import masterService from '../../services/masterService';
+import { authService } from '../../services/authService';
+import {
+  getUserAccessibleWarehouses,
+  getMovementEventOptions,
+} from '../../services/locationScopeHelper';
+import CommonCalendarModal from '../../components/CommonCalendarModal';
+import SearchableDropdown from '../../components/SearchableDropdown';
+import TwoPartLocationPicker from '../../components/TwoPartLocationPicker';
 
-const KNOWN_COURIERS = [
-  'Blue Dart Express',
-  'DHL Express',
-  'Delhivery Logistics',
-  'DTDC Courier',
-  'FedEx India',
-  'Trackon Courier',
-];
+import carrierService from '../../services/carrierService';
 
-const KNOWN_TRANSPORTERS = [
-  'Dedicated Truck Fleet',
-  'VRL Logistics Ltd',
-  'TCI Freight Logistics',
-  'SafeXpress Supply Chain',
-  'Gati KWE Logistics',
-  'Express Cargo Van',
-  'Interstate Road Carriers',
-];
 
-export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
-  // Master products, warehouses, and events
-  const masterProducts = masterService.getProducts();
-  const masterWarehouses = masterService.getWarehouses();
-  const masterEvents = masterService.getEvents();
+export default function CreateOutboundScreen({
+  editingOutbound,
+  onCancel,
+  onSaveOutbound,
+  session,
+  selectedDashboardWarehouse,
+}) {
+  // Master products & accessible locations (strictly master-created only)
+  const masterProducts = masterService?.getProducts?.() || [];
+  const masterWarehouses = masterService?.getWarehouses?.() || [];
+  const masterEvents = masterService?.getEvents?.() || [];
 
-  // Destination event suggestions
-  const defaultDestinations = [
-    'Jio Garden - City Music Fest',
-    'Hyatt Regency - Brand Launch',
-    'JLN Stadium Arena',
-    'Fatorda Stadium - Sports Weekend',
-    'Arena Club Event B',
-    'Pune Tech Summit',
-    'Mumbai Exhibition Centre',
-    ...masterEvents.map((e) => `${e.venue} - ${e.name}`),
-  ];
+  const [sourceType, setSourceType] = useState('Warehouse');
+  const [destType, setDestType] = useState('Event');
+
+  const warehouseOptions = masterWarehouses
+    .filter((w) => (w.status || 'active').toLowerCase() === 'active')
+    .map((w) => (typeof w === 'string' ? w : w.name || w.code));
+
+  const eventOptions = masterEvents
+    .filter((e) => (e.status || 'active').toLowerCase() === 'active')
+    .map((e) => (typeof e === 'string' ? e : e.name || e.code));
+
+  // Default Source from Dashboard Warehouse selection or first accessible warehouse
+  const dashboardSelectedWh =
+    selectedDashboardWarehouse && selectedDashboardWarehouse !== 'ALL'
+      ? selectedDashboardWarehouse
+      : authService?.getSelectedWarehouse?.() && authService.getSelectedWarehouse() !== 'ALL'
+      ? authService.getSelectedWarehouse()
+      : '';
+
+  const initialSource =
+    dashboardSelectedWh && warehouseOptions.includes(dashboardSelectedWh)
+      ? dashboardSelectedWh
+      : warehouseOptions[0] || '';
 
   // --- SECTION 1: CONSIGNMENT DETAILS ---
-  const [consignmentDate, setConsignmentDate] = useState('10/10/2026');
-  const [refNo, setRefNo] = useState('SO-99130');
-  const [source, setSource] = useState(
-    masterWarehouses[0]?.name || 'Warehouse A - Central'
-  );
-  const [destination, setDestination] = useState(
-    defaultDestinations[0] || 'Jio Garden - City Music Fest'
-  );
+  const [consignmentDate, setConsignmentDate] = useState(editingOutbound?.date || '14/10/2026');
+  const [isCalendarVisible, setIsCalendarVisible] = useState(false);
+  const [refNo, setRefNo] = useState(editingOutbound?.refNo || '');
+  const [source, setSource] = useState(editingOutbound?.source || initialSource);
+  const [destination, setDestination] = useState(editingOutbound?.destination || eventOptions[0] || '');
 
-  // --- SECTION 2: PRODUCT DETAILS ---
-  const [productItems, setProductItems] = useState([
-    {
-      id: '1',
-      srNo: 1,
-      productId: masterProducts[0]?.id || 'PRD-001',
-      productName: masterProducts[0]?.name || 'Item 22',
-      uom: masterProducts[0]?.uom || 'Pieces (Pcs)',
-      dispatchedQty: '8',
-      price: String(masterProducts[0]?.unitPrice || 1500),
-      amount: 12000,
-    },
-    {
-      id: '2',
-      srNo: 2,
-      productId: masterProducts[1]?.id || 'PRD-002',
-      productName: masterProducts[1]?.name || 'Portable Speaker',
-      uom: masterProducts[1]?.uom || 'Pieces (Pcs)',
-      dispatchedQty: '4',
-      price: String(masterProducts[1]?.unitPrice || 4200),
-      amount: 16800,
-    },
-  ]);
+  // --- SECTION 2: PRODUCT DETAILS (Exact matching format as Inbound) ---
+  const [productItems, setProductItems] = useState(() => {
+    if (editingOutbound?.productLines && editingOutbound.productLines.length > 0) {
+      return JSON.parse(JSON.stringify(editingOutbound.productLines));
+    }
+    return [
+      {
+        id: '1',
+        srNo: 1,
+        productId: '',
+        productName: '',
+        sku: '',
+        trackingType: '',
+        uom: '',
+        dispatchedQty: '',
+        price: '0',
+        amount: 0,
+      },
+    ];
+  });
+
+  // Live Type-to-Search state
+  const [activeSearchIndex, setActiveSearchIndex] = useState(null);
+  const [activeSearchQuery, setActiveSearchQuery] = useState('');
 
   // --- SECTION 3: SHIPPING METHOD ('courier' | 'transport') ---
-  const [shippingMethod, setShippingMethod] = useState('transport');
+  const [shippingMethod, setShippingMethod] = useState(() => {
+    const meth = (editingOutbound?.method || '').toLowerCase();
+    if (meth.includes('transport') || editingOutbound?.shippingMethodDetails?.type?.toLowerCase() === 'transport') {
+      return 'transport';
+    }
+    return 'courier';
+  });
 
-  // Courier fields
-  const [awbNo, setAwbNo] = useState('AWB-5541902');
-  const [courierCarrier, setCourierCarrier] = useState('Blue Dart Express');
+  // Courier fields (persistent, never cleared across tabs or save)
+  const [awbNo, setAwbNo] = useState(
+    editingOutbound?.shippingMethodDetails?.awbNo || editingOutbound?.awbNo || ''
+  );
+  const [courierCarrier, setCourierCarrier] = useState(
+    editingOutbound?.shippingMethodDetails?.carrier || editingOutbound?.courierCarrier || editingOutbound?.carrier || ''
+  );
 
-  // Transport fields
-  const [shipmentNo, setShipmentNo] = useState('SHP-OUT-2026-102');
-  const [transporter, setTransporter] = useState('Dedicated Truck Fleet');
-  const [vehicleNo, setVehicleNo] = useState('MH-04-AZ-8921');
-  const [lrDocketNo, setLrDocketNo] = useState('LR-773319');
+  // Transport fields (persistent, never cleared across tabs or save)
+  const [shipmentNo, setShipmentNo] = useState(
+    editingOutbound?.shippingMethodDetails?.shipmentNo || editingOutbound?.shipmentNo || ''
+  );
+  const [transporter, setTransporter] = useState(
+    editingOutbound?.shippingMethodDetails?.transporter || editingOutbound?.transporter || ''
+  );
+  const [vehicleNo, setVehicleNo] = useState(
+    editingOutbound?.shippingMethodDetails?.vehicleNo || editingOutbound?.vehicleNo || ''
+  );
+  const [lrDocketNo, setLrDocketNo] = useState(
+    editingOutbound?.shippingMethodDetails?.lrDocketNo || editingOutbound?.lrDocketNo || ''
+  );
 
-  // --- MODALS FOR EASY PICKING ---
+  // Dynamic Logistics Entities (Carriers & Transporters)
+  const [carrierList, setCarrierList] = useState(carrierService.getCarriers());
+  const [transporterList, setTransporterList] = useState(carrierService.getTransporters());
+  const [newLogisticsName, setNewLogisticsName] = useState('');
+
+  useEffect(() => {
+    carrierService.init().then(() => {
+      setCarrierList(carrierService.getCarriers());
+      setTransporterList(carrierService.getTransporters());
+    });
+    const unsub = carrierService.subscribe(() => {
+      setCarrierList(carrierService.getCarriers());
+      setTransporterList(carrierService.getTransporters());
+    });
+    return () => unsub();
+  }, []);
+
+  const handleAddLogisticsEntity = async () => {
+    const trimmed = newLogisticsName.trim();
+    if (!trimmed) return;
+    if (shippingMethod === 'courier') {
+      await carrierService.addCarrier(trimmed);
+      setCourierCarrier(trimmed);
+    } else {
+      await carrierService.addTransporter(trimmed);
+      setTransporter(trimmed);
+    }
+    setNewLogisticsName('');
+  };
+
+  const handleDeleteLogisticsEntity = async (name) => {
+    if (shippingMethod === 'courier') {
+      await carrierService.deleteCarrier(name);
+      if (courierCarrier === name) setCourierCarrier('');
+    } else {
+      await carrierService.deleteTransporter(name);
+      if (transporter === name) setTransporter('');
+    }
+  };
+
+  // Modals
   const [isProductPickerVisible, setIsProductPickerVisible] = useState(false);
   const [activeEditingItemIndex, setActiveEditingItemIndex] = useState(null);
   const [productSearchQuery, setProductSearchQuery] = useState('');
@@ -107,26 +173,51 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
   const [isDestPickerVisible, setIsDestPickerVisible] = useState(false);
   const [isCarrierPickerVisible, setIsCarrierPickerVisible] = useState(false);
 
+  // Tracking Badge Style Helper
+  const getTrackingBadgeStyle = (type) => {
+    const t = (type || '').toLowerCase();
+    if (t.includes('serial')) {
+      return {
+        bg: '#E2EBFF',
+        text: '#315EA8',
+        label: 'Serial Track',
+      };
+    }
+    if (t.includes('consumable')) {
+      return {
+        bg: '#FFF0D8',
+        text: '#A65B00',
+        label: 'Consumable',
+      };
+    }
+    return {
+      bg: '#DDF7E8',
+      text: '#18794E',
+      label: 'Countable',
+    };
+  };
+
   // --- SECTION 2 HELPERS ---
   const handleAddItem = () => {
     const nextSr = productItems.length + 1;
-    const defaultProd = masterProducts[nextSr % masterProducts.length] || masterProducts[0];
     const newItem = {
-      id: String(Date.now()),
+      id: String(Date.now() + Math.random()),
       srNo: nextSr,
-      productId: defaultProd?.id || '',
-      productName: defaultProd?.name || 'Select Product',
-      uom: defaultProd?.uom || 'Pieces (Pcs)',
-      dispatchedQty: '1',
-      price: String(defaultProd?.unitPrice || 0),
-      amount: (defaultProd?.unitPrice || 0) * 1,
+      productId: '',
+      productName: '',
+      sku: '',
+      trackingType: '',
+      uom: '',
+      dispatchedQty: '',
+      price: '0',
+      amount: 0,
     };
     setProductItems([...productItems, newItem]);
   };
 
   const handleRemoveItem = (index) => {
     if (productItems.length === 1) {
-      Alert.alert('Notice', 'At least one product line is recommended.');
+      Alert.alert('Notice', 'At least one product line item is required.');
       return;
     }
     const filtered = productItems.filter((_, idx) => idx !== index);
@@ -135,37 +226,94 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
       srNo: idx + 1,
     }));
     setProductItems(reindexed);
+    if (activeSearchIndex === index) {
+      setActiveSearchIndex(null);
+    }
   };
 
-  const handleUpdateItemField = (index, field, value) => {
-    const updated = [...productItems];
-    const item = { ...updated[index], [field]: value };
+  const handleTypeProduct = (index, text) => {
+    setActiveSearchIndex(index);
+    setActiveSearchQuery(text);
 
-    // Calculate Amount = Dispatched Qty * Price
-    const qtyNum = parseFloat(item.dispatchedQty) || 0;
+    const updated = [...productItems];
+    updated[index] = { ...updated[index], productName: text };
+    setProductItems(updated);
+
+    const trimmed = text.trim().toLowerCase();
+    if (trimmed.length >= 2) {
+      const exact = masterProducts.find(
+        (p) => p.name.toLowerCase() === trimmed || (p.sku && p.sku.toLowerCase() === trimmed)
+      );
+      if (exact) {
+        applyProductToRow(index, exact, false);
+      }
+    }
+  };
+
+  const handleClearProduct = (index) => {
+    const updated = [...productItems];
+    updated[index] = {
+      ...updated[index],
+      productId: '',
+      productName: '',
+      sku: '',
+      trackingType: '',
+      uom: '',
+      price: '0',
+      amount: 0,
+    };
+    setProductItems(updated);
+    setActiveSearchQuery('');
+  };
+
+  const handleQtyChange = (index, val) => {
+    const updated = [...productItems];
+    const item = { ...updated[index] };
+    const cleanVal = val.replace(/[^0-9]/g, '');
+    item.dispatchedQty = cleanVal;
+    const qtyNum = parseInt(cleanVal, 10) || 0;
     const priceNum = parseFloat(item.price) || 0;
     item.amount = Math.round(qtyNum * priceNum);
-
     updated[index] = item;
     setProductItems(updated);
   };
 
-  const handleSelectProduct = (product) => {
-    if (activeEditingItemIndex === null) return;
+  const applyProductToRow = (index, product, closeSearch = true) => {
     const updated = [...productItems];
-    const item = { ...updated[activeEditingItemIndex] };
+    const item = { ...updated[index] };
 
     item.productId = product.id;
     item.productName = product.name;
-    item.uom = product.uom || 'Pieces (Pcs)';
+    item.sku = product.sku || product.id;
+    item.trackingType = product.trackingType || 'Countable';
+    item.uom = product.uom || 'Pieces';
     item.price = String(product.unitPrice || 0);
 
     const qtyNum = parseFloat(item.dispatchedQty) || 0;
     const priceNum = parseFloat(item.price) || 0;
     item.amount = Math.round(qtyNum * priceNum);
 
-    updated[activeEditingItemIndex] = item;
+    updated[index] = item;
     setProductItems(updated);
+    if (closeSearch) {
+      setActiveSearchIndex(null);
+      setActiveSearchQuery('');
+    }
+  };
+
+  const filteredMasterProducts = masterProducts.filter((p) => {
+    if (!activeSearchQuery.trim()) return true;
+    const q = activeSearchQuery.toLowerCase().trim();
+    return (
+      p.name.toLowerCase().includes(q) ||
+      (p.sku && p.sku.toLowerCase().includes(q)) ||
+      (p.category && p.category.toLowerCase().includes(q))
+    );
+  });
+
+  const handleSelectProduct = (product) => {
+    if (activeEditingItemIndex === null) return;
+    applyProductToRow(activeEditingItemIndex, product, true);
     setIsProductPickerVisible(false);
     setActiveEditingItemIndex(null);
   };
@@ -182,17 +330,13 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
 
   // --- ACTIONS ---
   const handleSaveDraft = () => {
-    if (!refNo.trim()) {
-      Alert.alert('Draft Validation', 'Please enter at least a Reference Number to save as draft.');
-      return;
-    }
-
     const randomSuffix = String(Math.floor(100 + Math.random() * 900));
+    const finalRefNo = refNo.trim() || (`SO-${randomSuffix}`);
     const draftOutbound = {
-      id: `OUT-DRAFT-${Date.now()}`,
-      no: `OUT-2026-D${randomSuffix}`,
-      date: consignmentDate.trim() || '10 Oct 2026',
-      refNo: refNo.trim(),
+      id: editingOutbound?.id || `OUT-DRAFT-${Date.now()}`,
+      no: editingOutbound?.no || `OUT-2026-D${randomSuffix}`,
+      date: consignmentDate.trim() || '14/10/2026',
+      refNo: finalRefNo,
       source: source.trim() || 'Warehouse Central',
       destination: destination.trim() || 'Event Destination',
       method:
@@ -203,16 +347,28 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
       itemsCount: productItems.length,
       totalQty: totalQuantity,
       totalAmount: totalAmount,
-      shippingMethodDetails:
-        shippingMethod === 'courier'
-          ? { type: 'Courier', awbNo, carrier: courierCarrier }
-          : { type: 'Transport', shipmentNo, transporter, vehicleNo, lrDocketNo },
+      shippingMethodDetails: {
+        type: shippingMethod === 'courier' ? 'Courier' : 'Transport',
+        awbNo: awbNo.trim(),
+        carrier: courierCarrier.trim(),
+        shipmentNo: shipmentNo.trim() || ('SHP-OUT-' + Date.now().toString().slice(-6)),
+        transporter: transporter.trim(),
+        vehicleNo: vehicleNo.trim(),
+        lrDocketNo: lrDocketNo.trim(),
+      },
+      awbNo: awbNo.trim(),
+      carrier: courierCarrier.trim(),
+      courierCarrier: courierCarrier.trim(),
+      shipmentNo: shipmentNo.trim() || ('SHP-OUT-' + Date.now().toString().slice(-6)),
+      transporter: transporter.trim(),
+      vehicleNo: vehicleNo.trim(),
+      lrDocketNo: lrDocketNo.trim(),
       productLines: productItems,
     };
 
     Alert.alert(
       'Draft Saved',
-      `Outbound draft ${draftOutbound.no} for Reference ${refNo} has been saved successfully.`,
+      `Outbound draft ${draftOutbound.no} for Reference ${refNo || finalRefNo} has been saved successfully.`,
       [
         {
           text: 'OK',
@@ -228,16 +384,12 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
       Alert.alert('Validation Error', 'Please specify a consignment Date.');
       return;
     }
-    if (!refNo.trim()) {
-      Alert.alert('Validation Error', 'Reference No. is required.');
-      return;
-    }
     if (!source.trim()) {
-      Alert.alert('Validation Error', 'Please select or enter the Source.');
+      Alert.alert('Validation Error', 'Please select or enter the Source Warehouse.');
       return;
     }
     if (!destination.trim()) {
-      Alert.alert('Validation Error', 'Please select or enter the Destination.');
+      Alert.alert('Validation Error', 'Please select or enter the Destination Event.');
       return;
     }
 
@@ -248,13 +400,13 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
     }
     for (let i = 0; i < productItems.length; i++) {
       const it = productItems[i];
-      if (!it.productName || it.productName === 'Select Product') {
-        Alert.alert('Validation Error', `Please select a product for row #${it.srNo}.`);
+      if (!it.productName.trim()) {
+        Alert.alert('Validation Error', `Line #${i + 1}: Please select a Product from Product Master.`);
         return;
       }
-      const q = parseFloat(it.dispatchedQty);
-      if (isNaN(q) || q <= 0) {
-        Alert.alert('Validation Error', `Dispatched Qty must be greater than 0 for row #${it.srNo}.`);
+      const q = parseInt(it.dispatchedQty, 10);
+      if (!q || q <= 0) {
+        Alert.alert('Validation Error', `Line #${i + 1} (${it.productName}): Dispatched Qty must be entered and greater than 0.`);
         return;
       }
     }
@@ -270,23 +422,20 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
         return;
       }
     } else {
-      if (!shipmentNo.trim()) {
-        Alert.alert('Validation Error', 'Shipment No. is required for Transport shipping.');
-        return;
-      }
       if (!transporter.trim()) {
-        Alert.alert('Validation Error', 'Carrier / Transporter is required for Transport shipping.');
+        Alert.alert('Validation Error', 'Transporter is required for Transport shipping.');
         return;
       }
     }
 
     // 4. Generate Created Record
     const randomSuffix = String(Math.floor(100 + Math.random() * 900));
+    const finalRefNo = refNo.trim() || (`SO-${randomSuffix}`);
     const newOutbound = {
-      id: `OUT-${Date.now()}`,
-      no: `OUT-2026-${randomSuffix}`,
-      date: consignmentDate.trim(),
-      refNo: refNo.trim(),
+      id: editingOutbound?.id || `OUT-${Date.now()}`,
+      no: editingOutbound?.no || `OUT-2026-${randomSuffix}`,
+      date: consignmentDate.trim() || '14/10/2026',
+      refNo: finalRefNo,
       source: source.trim(),
       destination: destination.trim(),
       method:
@@ -297,10 +446,22 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
       itemsCount: productItems.length,
       totalQty: totalQuantity,
       totalAmount: totalAmount,
-      shippingMethodDetails:
-        shippingMethod === 'courier'
-          ? { type: 'Courier', awbNo, carrier: courierCarrier }
-          : { type: 'Transport', shipmentNo, transporter, vehicleNo, lrDocketNo },
+      shippingMethodDetails: {
+        type: shippingMethod === 'courier' ? 'Courier' : 'Transport',
+        awbNo: awbNo.trim(),
+        carrier: courierCarrier.trim(),
+        shipmentNo: shipmentNo.trim() || ('SHP-OUT-' + Date.now().toString().slice(-6)),
+        transporter: transporter.trim(),
+        vehicleNo: vehicleNo.trim(),
+        lrDocketNo: lrDocketNo.trim(),
+      },
+      awbNo: awbNo.trim(),
+      carrier: courierCarrier.trim(),
+      courierCarrier: courierCarrier.trim(),
+      shipmentNo: shipmentNo.trim() || ('SHP-OUT-' + Date.now().toString().slice(-6)),
+      transporter: transporter.trim(),
+      vehicleNo: vehicleNo.trim(),
+      lrDocketNo: lrDocketNo.trim(),
       productLines: productItems,
     };
 
@@ -318,41 +479,18 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
 
   return (
     <View style={styles.container}>
-      {/* 1. TOP NAVY HEADER matching SVG (#17102F) */}
-      <View style={styles.topNavyHeader}>
-        <View style={styles.navyHeaderLeft}>
-          <TouchableOpacity
-            style={styles.backIconButton}
-            activeOpacity={0.7}
-            onPress={onCancel}
-          >
-            <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-          <View>
-            <Text style={styles.navyTitle}>Create Outbound</Text>
-            <Text style={styles.navySubtitle}>
-              Record dispatched stock and shipment details
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.badgeLiveMode}>
-          <Text style={styles.badgeLiveModeText}>NEW OUTBOUND</Text>
-        </View>
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* BREADCRUMB ROW matching SVG */}
+        {/* BREADCRUMB ROW matching Inbound */}
         <TouchableOpacity
           style={styles.breadcrumbRow}
           activeOpacity={0.8}
           onPress={onCancel}
         >
           <Ionicons name="chevron-back" size={16} color="#6D43C0" />
-          <Text style={styles.breadcrumbText}>Movement / Outbound / New</Text>
+          <Text style={styles.breadcrumbText}>‹ Movement / Outbound / New</Text>
         </TouchableOpacity>
 
         {/* ============================================================== */}
@@ -360,89 +498,38 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
         {/* ============================================================== */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>1. Consignment Details</Text>
-            <View style={styles.sectionBadge}>
-              <Text style={styles.sectionBadgeText}>Dispatch Info</Text>
-            </View>
+            <Text style={styles.cardTitle}>Consignment Details</Text>
           </View>
 
-          {/* Row 1: Date & Reference No. */}
-          <View style={styles.fieldsRow}>
-            <View style={styles.fieldCol}>
-              <Text style={styles.fieldLabel}>Date *</Text>
-              <View style={styles.inputWrap}>
-                <Ionicons name="calendar-outline" size={14} color="#625A72" style={{ marginRight: 6 }} />
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="DD/MM/YYYY"
-                  placeholderTextColor="#9A93A7"
-                  value={consignmentDate}
-                  onChangeText={setConsignmentDate}
-                />
-              </View>
-            </View>
+          {/* Line 1: Source */}
+          <TwoPartLocationPicker
+            label="Source"
+            required={true}
+            type={sourceType}
+            onTypeChange={(t) => {
+              setSourceType(t);
+              setSource('');
+            }}
+            value={source}
+            onSelect={(val) => setSource(val)}
+            warehouses={warehouseOptions}
+            events={eventOptions}
+          />
 
-            <View style={styles.fieldCol}>
-              <Text style={styles.fieldLabel}>Reference No. *</Text>
-              <View style={styles.inputWrap}>
-                <Ionicons name="document-text-outline" size={14} color="#625A72" style={{ marginRight: 6 }} />
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Enter reference number"
-                  placeholderTextColor="#9A93A7"
-                  value={refNo}
-                  onChangeText={setRefNo}
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* Row 2: Source & Destination */}
-          <View style={styles.fieldsRow}>
-            <View style={styles.fieldCol}>
-              <Text style={styles.fieldLabel}>Source (Warehouse) *</Text>
-              <TouchableOpacity
-                style={styles.dropdownInput}
-                activeOpacity={0.8}
-                onPress={() => setIsSourcePickerVisible(true)}
-              >
-                <Text
-                  style={[
-                    styles.dropdownText,
-                    !source && { color: '#9A93A7' },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {source || 'Select warehouse'}
-                </Text>
-                <Ionicons name="chevron-down" size={14} color="#625A72" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.fieldCol}>
-              <Text style={styles.fieldLabel}>Destination (Event / Venue) *</Text>
-              <TouchableOpacity
-                style={styles.dropdownInput}
-                activeOpacity={0.8}
-                onPress={() => setIsDestPickerVisible(true)}
-              >
-                <Text
-                  style={[
-                    styles.dropdownText,
-                    !destination && { color: '#9A93A7' },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {destination || 'Select destination'}
-                </Text>
-                <Ionicons name="chevron-down" size={14} color="#625A72" />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <Text style={styles.cardValidationHint}>
-            * Required fields should be validated before saving.
-          </Text>
+          {/* Line 2: Destination */}
+          <TwoPartLocationPicker
+            label="Destination"
+            required={true}
+            type={destType}
+            onTypeChange={(t) => {
+              setDestType(t);
+              setDestination('');
+            }}
+            value={destination}
+            onSelect={(val) => setDestination(val)}
+            warehouses={warehouseOptions}
+            events={eventOptions}
+          />
         </View>
 
         {/* ============================================================== */}
@@ -450,28 +537,23 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
         {/* ============================================================== */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>2. Product Details</Text>
+            <Text style={styles.cardTitle}>Product Details</Text>
             <TouchableOpacity
               style={styles.addItemBtn}
               activeOpacity={0.85}
               onPress={handleAddItem}
             >
-              <Ionicons name="add" size={13} color="#FFFFFF" style={{ marginRight: 2 }} />
-              <Text style={styles.addItemBtnText}>+ Add item</Text>
+              <Ionicons
+                name="add"
+                size={14}
+                color="#FFFFFF"
+                style={{ marginRight: 2 }}
+              />
+              <Text style={styles.addItemBtnText}>Add item</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Subheader bar inside card */}
-          <View style={styles.productSubHeaderBar}>
-            <Text style={styles.productSubHeaderText}>
-              Product line items ({productItems.length})
-            </Text>
-            <Text style={styles.productSubHeaderSub}>
-              Amount = Dispatched Qty × Price
-            </Text>
-          </View>
-
-          {/* Product Items Table */}
+          {/* Product Items Table (Horizontally Scrollable) */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={true}
@@ -480,164 +562,235 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
             <View style={styles.tableBlock}>
               {/* Table Header Row */}
               <View style={styles.tableHeaderRow}>
-                <View style={[styles.thCell, { width: 44 }]}>
-                  <Text style={styles.thText}>Sr.</Text>
-                </View>
-                <View style={[styles.thCell, { width: 150 }]}>
+                <View style={[styles.thCell, { width: 230 }]}>
                   <Text style={styles.thText}>Product Name</Text>
                 </View>
                 <View style={[styles.thCell, { width: 75 }]}>
                   <Text style={styles.thText}>UoM</Text>
                 </View>
+                <View style={[styles.thCell, { width: 110 }]}>
+                  <Text style={styles.thText}>Tracking Type</Text>
+                </View>
                 <View style={[styles.thCell, { width: 90 }]}>
                   <Text style={styles.thText}>Dispatched Qty</Text>
                 </View>
-                <View style={[styles.thCell, { width: 80 }]}>
-                  <Text style={styles.thText}>Price (₹)</Text>
-                </View>
-                <View style={[styles.thCell, { width: 90 }]}>
-                  <Text style={styles.thText}>Amount (₹)</Text>
-                </View>
-                <View style={[styles.thCell, { width: 55, borderRightWidth: 0 }]}>
+                <View style={[styles.thCell, { width: 65, borderRightWidth: 0 }]}>
                   <Text style={styles.thText}>Action</Text>
                 </View>
               </View>
 
               {/* Table Body Rows */}
-              {productItems.map((item, index) => (
-                <View key={item.id} style={styles.tableBodyRow}>
-                  {/* Sr. No. */}
-                  <View style={[styles.tdCell, { width: 44, justifyContent: 'center', alignItems: 'center' }]}>
-                    <Text style={styles.tdSrText}>{item.srNo}</Text>
-                  </View>
+              {productItems.map((item, index) => {
+                const badge = getTrackingBadgeStyle(item.trackingType);
 
-                  {/* Product Name (Tap to select from master catalog) */}
-                  <View style={[styles.tdCell, { width: 150 }]}>
-                    <TouchableOpacity
-                      style={styles.tdDropdownBtn}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setActiveEditingItemIndex(index);
-                        setProductSearchQuery('');
-                        setIsProductPickerVisible(true);
-                      }}
+                return (
+                  <View key={item.id} style={styles.tableBodyRow}>
+                    {/* Product Name with Type-to-Search */}
+                    <View style={[styles.tdCell, { width: 230, paddingVertical: 4, zIndex: activeSearchIndex === index ? 9999 : 1 }]}>
+                      <View style={{ width: '100%' }}>
+                        <View style={[styles.tdProductInputWrap, activeSearchIndex === index && { borderColor: '#38BDF8', borderWidth: 1.5 }]}>
+                          <Ionicons name="search" size={13} color="#6D43C0" style={{ marginRight: 6 }} />
+                          <TextInput
+                            style={styles.tdProductTextInput}
+                            placeholder="Type to search product..."
+                            placeholderTextColor="#9A93A7"
+                            value={item.productName || ''}
+                            onChangeText={(text) => handleTypeProduct(index, text)}
+                            onFocus={() => {
+                              setActiveSearchIndex(index);
+                              setActiveSearchQuery(item.productName || '');
+                            }}
+                          />
+                          {item.productName ? (
+                            <TouchableOpacity
+                              onPress={() => handleClearProduct(index)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name="close-circle" size={15} color="#8F87A0" />
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+
+                        {/* Product Auto-Suggest Dropdown List (same as zipcode) */}
+                        {activeSearchIndex === index && filteredMasterProducts.length > 0 && (
+                          <View style={styles.zipDropdownCard}>
+                            <ScrollView
+                              nestedScrollEnabled={true}
+                              style={styles.zipDropdownScroll}
+                              keyboardShouldPersistTaps="handled"
+                            >
+                              {filteredMasterProducts.map((p, pIdx) => (
+                                <TouchableOpacity
+                                  key={p.id || p.sku || pIdx}
+                                  style={[
+                                    styles.zipDropdownItem,
+                                    pIdx === 0 && styles.zipDropdownItemActive,
+                                  ]}
+                                  onPress={() => applyProductToRow(index, p, true)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.zipDropdownItemText} numberOfLines={1}>
+                                    {p.name}
+                                  </Text>
+                                  {p.sku ? (
+                                    <Text style={styles.zipDropdownItemSub} numberOfLines={1}>
+                                      SKU: {p.sku} • {p.trackingType || 'Countable'} • {p.uom || 'Unit'}
+                                    </Text>
+                                  ) : null}
+                                </TouchableOpacity>
+                              ))}
+                            </ScrollView>
+                          </View>
+                        )}
+                      </View>
+                      {item.sku ? (
+                        <Text style={styles.tdProductSkuText} numberOfLines={1}>
+                          SKU: {item.sku}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {/* UoM */}
+                    <View
+                      style={[
+                        styles.tdCell,
+                        {
+                          width: 75,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        },
+                      ]}
                     >
-                      <Text
-                        style={[
-                          styles.tdDropdownText,
-                          (!item.productName || item.productName === 'Select Product') && { color: '#9A93A7' },
-                        ]}
-                        numberOfLines={1}
+                      <Text style={styles.tdUomText}>{item.uom || '—'}</Text>
+                    </View>
+
+                    {/* Tracking Type */}
+                    <View
+                      style={[
+                        styles.tdCell,
+                        {
+                          width: 110,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        },
+                      ]}
+                    >
+                      {item.trackingType ? (
+                        <View
+                          style={[
+                            styles.trackingBadge,
+                            { backgroundColor: badge.bg },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.trackingBadgeText,
+                              { color: badge.text },
+                            ]}
+                          >
+                            {badge.label}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.tdUomText}>—</Text>
+                      )}
+                    </View>
+
+                    {/* Dispatched Qty */}
+                    <View
+                      style={[
+                        styles.tdCell,
+                        {
+                          width: 90,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        },
+                      ]}
+                    >
+                      <TextInput
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#CBD5E1',
+                          borderRadius: 6,
+                          paddingHorizontal: 6,
+                          paddingVertical: 4,
+                          width: 60,
+                          textAlign: 'center',
+                          fontSize: 13,
+                          fontWeight: '700',
+                          color: '#1E293B',
+                          backgroundColor: '#FFFFFF',
+                        }}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        placeholderTextColor="#94A3B8"
+                        value={item.dispatchedQty || ''}
+                        onChangeText={(val) => handleQtyChange(index, val)}
+                      />
+                    </View>
+
+                    {/* Action Cell */}
+                    <View
+                      style={[
+                        styles.tdCell,
+                        {
+                          width: 65,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          borderRightWidth: 0,
+                        },
+                      ]}
+                    >
+                      <TouchableOpacity
+                        style={{ padding: 6 }}
+                        activeOpacity={0.7}
+                        onPress={() => handleRemoveItem(index)}
                       >
-                        {item.productName || 'Select'}
-                      </Text>
-                      <Ionicons name="caret-down" size={10} color="#6D43C0" />
-                    </TouchableOpacity>
+                        <Ionicons
+                          name="trash-outline"
+                          size={18}
+                          color="#EF4444"
+                        />
+                      </TouchableOpacity>
+                    </View>
                   </View>
-
-                  {/* UoM */}
-                  <View style={[styles.tdCell, { width: 75 }]}>
-                    <TextInput
-                      style={styles.tdTextInput}
-                      value={item.uom}
-                      placeholder="Pcs"
-                      placeholderTextColor="#9A93A7"
-                      onChangeText={(val) => handleUpdateItemField(index, 'uom', val)}
-                    />
-                  </View>
-
-                  {/* Dispatched Qty */}
-                  <View style={[styles.tdCell, { width: 90 }]}>
-                    <TextInput
-                      style={[styles.tdTextInput, styles.tdNumericInput]}
-                      keyboardType="numeric"
-                      value={String(item.dispatchedQty)}
-                      placeholder="0"
-                      placeholderTextColor="#9A93A7"
-                      onChangeText={(val) => handleUpdateItemField(index, 'dispatchedQty', val)}
-                    />
-                  </View>
-
-                  {/* Price */}
-                  <View style={[styles.tdCell, { width: 80 }]}>
-                    <TextInput
-                      style={[styles.tdTextInput, styles.tdNumericInput]}
-                      keyboardType="numeric"
-                      value={String(item.price)}
-                      placeholder="0"
-                      placeholderTextColor="#9A93A7"
-                      onChangeText={(val) => handleUpdateItemField(index, 'price', val)}
-                    />
-                  </View>
-
-                  {/* Calculated Amount */}
-                  <View style={[styles.tdCell, { width: 90, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 8 }]}>
-                    <Text style={styles.tdAmountText}>
-                      ₹{(item.amount || 0).toLocaleString()}
-                    </Text>
-                  </View>
-
-                  {/* Action (Remove) */}
-                  <View style={[styles.tdCell, { width: 55, justifyContent: 'center', alignItems: 'center', borderRightWidth: 0 }]}>
-                    <TouchableOpacity
-                      style={styles.tdActionBtn}
-                      activeOpacity={0.7}
-                      onPress={() => handleRemoveItem(index)}
-                    >
-                      <Ionicons name="trash-outline" size={15} color="#D32F2F" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
 
               {/* Totals Row */}
               <View style={styles.tableTotalRow}>
-                <View style={[styles.tdCell, { width: 269, paddingLeft: 8 }]}>
-                  <Text style={styles.totalRowLabel}>TOTALS ({productItems.length} lines)</Text>
+                <View style={[styles.tdCell, { width: 375, paddingLeft: 10 }]}>
+                  <Text style={styles.totalRowLabel}>
+                    TOTALS ({productItems.length} lines)
+                  </Text>
                 </View>
-                <View style={[styles.tdCell, { width: 90, justifyContent: 'center', alignItems: 'center' }]}>
+                <View
+                  style={[
+                    styles.tdCell,
+                    {
+                      width: 55,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    },
+                  ]}
+                >
                   <Text style={styles.totalRowQty}>{totalQuantity}</Text>
                 </View>
-                <View style={[styles.tdCell, { width: 80 }]} />
-                <View style={[styles.tdCell, { width: 90, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 8 }]}>
-                  <Text style={styles.totalRowAmount}>₹{totalAmount.toLocaleString()}</Text>
+                <View style={[styles.tdCell, { width: 125, borderRightWidth: 0 }]}>
+                  <Text style={styles.totalRowAmount}>
+                    ₹{totalAmount.toLocaleString()}
+                  </Text>
                 </View>
-                <View style={[styles.tdCell, { width: 55, borderRightWidth: 0 }]} />
               </View>
             </View>
           </ScrollView>
-
-          {/* Product guidance footer notes matching SVG */}
-          <View style={styles.productFooterNotes}>
-            <View style={styles.bulletNoteRow}>
-              <Ionicons name="calculator-outline" size={12} color="#6D43C0" style={{ marginRight: 6 }} />
-              <Text style={styles.bulletNoteText}>
-                Amount = Dispatched Qty × Price (calculated automatically in real-time)
-              </Text>
-            </View>
-            <View style={styles.bulletNoteRow}>
-              <Ionicons name="information-circle-outline" size={12} color="#6D43C0" style={{ marginRight: 6 }} />
-              <Text style={styles.bulletNoteText}>
-                Use Action to edit or remove a product line.
-              </Text>
-            </View>
-          </View>
         </View>
 
-        {/* ============================================================== */}
-        {/* SECTION 3: SHIPPING METHOD (Courier vs Transport)              */}
-        {/* ============================================================== */}
+        {/* SECTION 3: SHIPPING METHOD */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>3. Shipping Method</Text>
-            <View style={styles.methodStatusBadge}>
-              <Text style={styles.methodStatusBadgeText}>
-                {shippingMethod === 'courier' ? 'Courier Shipping' : 'Freight Transport'}
-              </Text>
-            </View>
+            <Text style={styles.cardTitle}>Shipping Method</Text>
           </View>
-
-          <Text style={styles.cardSubtitle}>Choose how the consignment is being shipped.</Text>
 
           {/* Segmented Switch: Courier vs Transport */}
           <View style={styles.methodToggleContainer}>
@@ -703,9 +856,16 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
             <View style={styles.methodSectionBlock}>
               <View style={styles.fieldsRow}>
                 <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>AWB / Tracking No. *</Text>
+                  <Text style={styles.fieldLabel}>
+                    AWB / Tracking No. <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+                  </Text>
                   <View style={styles.inputWrap}>
-                    <Ionicons name="barcode-outline" size={14} color="#625A72" style={{ marginRight: 6 }} />
+                    <Ionicons
+                      name="barcode-outline"
+                      size={14}
+                      color="#625A72"
+                      style={{ marginRight: 6 }}
+                    />
                     <TextInput
                       style={styles.textInput}
                       placeholder="Enter AWB number"
@@ -717,7 +877,9 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
                 </View>
 
                 <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>Carrier *</Text>
+                  <Text style={styles.fieldLabel}>
+                    Carrier <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+                  </Text>
                   <TouchableOpacity
                     style={styles.dropdownInput}
                     activeOpacity={0.8}
@@ -730,7 +892,7 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
                       ]}
                       numberOfLines={1}
                     >
-                      {courierCarrier || 'Select / enter carrier'}
+                      {courierCarrier || 'Select carrier'}
                     </Text>
                     <Ionicons name="chevron-down" size={14} color="#625A72" />
                   </TouchableOpacity>
@@ -742,30 +904,13 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
           {/* Conditional Fields: TRANSPORT */}
           {shippingMethod === 'transport' && (
             <View style={styles.methodSectionBlock}>
-              <View style={styles.transportBanner}>
-                <Text style={styles.transportBannerTitle}>
-                  Transport details (when Transport is selected)
-                </Text>
-              </View>
 
-              {/* Row 1: Shipment No. & Carrier / Transporter */}
+              {/* Row 1: Carrier / Transporter */}
               <View style={styles.fieldsRow}>
                 <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>Shipment No. *</Text>
-                  <View style={styles.inputWrap}>
-                    <Ionicons name="receipt-outline" size={14} color="#625A72" style={{ marginRight: 6 }} />
-                    <TextInput
-                      style={styles.textInput}
-                      placeholder="Enter shipment number"
-                      placeholderTextColor="#9A93A7"
-                      value={shipmentNo}
-                      onChangeText={setShipmentNo}
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>Carrier / Transporter *</Text>
+                  <Text style={styles.fieldLabel}>
+                    Transporter / Fleet <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+                  </Text>
                   <TouchableOpacity
                     style={styles.dropdownInput}
                     activeOpacity={0.8}
@@ -778,22 +923,27 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
                       ]}
                       numberOfLines={1}
                     >
-                      {transporter || 'Enter carrier / transporter'}
+                      {transporter || 'Select transporter'}
                     </Text>
                     <Ionicons name="chevron-down" size={14} color="#625A72" />
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {/* Row 2: Vehicle No. (optional) & LR / Docket No. (optional) */}
+              {/* Row 2: Vehicle No. & LR / Docket No. */}
               <View style={styles.fieldsRow}>
                 <View style={styles.fieldCol}>
                   <Text style={styles.fieldLabel}>Vehicle No. (optional)</Text>
                   <View style={styles.inputWrap}>
-                    <Ionicons name="car-outline" size={14} color="#625A72" style={{ marginRight: 6 }} />
+                    <Ionicons
+                      name="car-outline"
+                      size={14}
+                      color="#625A72"
+                      style={{ marginRight: 6 }}
+                    />
                     <TextInput
                       style={styles.textInput}
-                      placeholder="Enter vehicle number"
+                      placeholder="e.g. MH-04-AZ-8921"
                       placeholderTextColor="#9A93A7"
                       value={vehicleNo}
                       onChangeText={setVehicleNo}
@@ -804,7 +954,12 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
                 <View style={styles.fieldCol}>
                   <Text style={styles.fieldLabel}>LR / Docket No. (optional)</Text>
                   <View style={styles.inputWrap}>
-                    <Ionicons name="newspaper-outline" size={14} color="#625A72" style={{ marginRight: 6 }} />
+                    <Ionicons
+                      name="newspaper-outline"
+                      size={14}
+                      color="#625A72"
+                      style={{ marginRight: 6 }}
+                    />
                     <TextInput
                       style={styles.textInput}
                       placeholder="Enter LR / docket number"
@@ -817,81 +972,12 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
               </View>
             </View>
           )}
-
-          {/* Notes matching SVG */}
-          <View style={styles.methodFooterNotes}>
-            <Text style={styles.methodNoteText}>
-              • Courier and Transport fields switch based on the selected method.
-            </Text>
-            <Text style={styles.methodNoteText}>
-              • Only the relevant shipping method fields should be required.
-            </Text>
-          </View>
         </View>
 
         {/* ============================================================== */}
-        {/* SECTION 4: REVIEW                                              */}
-        {/* ============================================================== */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>4. Review</Text>
-            <View style={styles.readyBadge}>
-              <Ionicons name="checkmark-circle" size={12} color="#03543F" style={{ marginRight: 4 }} />
-              <Text style={styles.readyBadgeText}>Verification</Text>
-            </View>
-          </View>
-
-          <Text style={styles.cardSubtitle}>
-            Check consignment, product quantities and shipping method before dispatch.
-          </Text>
-
-          {/* Review Quick Summary Grid */}
-          <View style={styles.reviewGrid}>
-            <View style={styles.reviewCardItem}>
-              <Text style={styles.reviewItemLabel}>CONSIGNMENT</Text>
-              <Text style={styles.reviewItemValueMain} numberOfLines={1}>
-                {refNo || 'No Ref'}
-              </Text>
-              <Text style={styles.reviewItemSub} numberOfLines={1}>
-                {source} ➔ {destination}
-              </Text>
-            </View>
-
-            <View style={styles.reviewCardItem}>
-              <Text style={styles.reviewItemLabel}>ITEMS & VALUE</Text>
-              <Text style={styles.reviewItemValueMain}>
-                {productItems.length} lines ({totalQuantity} units)
-              </Text>
-              <Text style={[styles.reviewItemSub, { color: '#6D43C0', fontWeight: '700' }]}>
-                ₹{totalAmount.toLocaleString()} Net Valuation
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.reviewMethodPill}>
-            <MaterialCommunityIcons
-              name={shippingMethod === 'courier' ? 'package-variant-closed' : 'truck-fast'}
-              size={15}
-              color="#5521B5"
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.reviewMethodText}>
-              {shippingMethod === 'courier'
-                ? `Courier: ${courierCarrier || 'N/A'} (AWB: ${awbNo || 'N/A'})`
-                : `Transport: ${transporter || 'N/A'} (Shipment: ${shipmentNo || 'N/A'}${vehicleNo ? `, Veh: ${vehicleNo}` : ''})`}
-            </Text>
-          </View>
-
-          <Text style={styles.reviewDraftNotice}>
-            Drafts can be edited before final confirmation.
-          </Text>
-        </View>
-
-        {/* ============================================================== */}
-        {/* SECTION 5: ACTIONS (Cancel, Save Draft, Create Outbound)       */}
         {/* ============================================================== */}
         <View style={styles.actionsBarCard}>
-          {/* Cancel */}
+          {/* Cancel / Back */}
           <TouchableOpacity
             style={styles.cancelBtn}
             activeOpacity={0.8}
@@ -906,18 +992,28 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
             activeOpacity={0.8}
             onPress={handleSaveDraft}
           >
-            <Ionicons name="document-outline" size={14} color="#6D43C0" style={{ marginRight: 4 }} />
+            <Ionicons
+              name="document-outline"
+              size={15}
+              color="#FFFFFF"
+              style={{ marginRight: 4 }}
+            />
             <Text style={styles.saveDraftBtnText}>Save Draft</Text>
           </TouchableOpacity>
 
           {/* Create Outbound */}
           <TouchableOpacity
-            style={styles.createInboundBtn}
-            activeOpacity={0.85}
+            style={[styles.saveDraftBtn, { backgroundColor: '#10B981', flex: 1.3 }]}
+            activeOpacity={0.8}
             onPress={handleCreateOutbound}
           >
-            <Ionicons name="paper-plane" size={15} color="#FFFFFF" style={{ marginRight: 5 }} />
-            <Text style={styles.createInboundBtnText}>Create Outbound</Text>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={16}
+              color="#FFFFFF"
+              style={{ marginRight: 4 }}
+            />
+            <Text style={styles.saveDraftBtnText}>Create Outbound</Text>
           </TouchableOpacity>
         </View>
 
@@ -925,76 +1021,17 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
       </ScrollView>
 
       {/* ============================================================== */}
-      {/* MODAL 1: PRODUCT PICKER MODAL                                  */}
+      {/* MODAL 1: CALENDAR MODAL                                        */}
       {/* ============================================================== */}
-      <Modal
-        visible={isProductPickerVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setIsProductPickerVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.pickerModalContent}>
-            <View style={styles.pickerModalHeader}>
-              <Text style={styles.pickerModalTitle}>Select Master Product</Text>
-              <TouchableOpacity
-                onPress={() => setIsProductPickerVisible(false)}
-                style={styles.pickerCloseBtn}
-              >
-                <Ionicons name="close" size={20} color="#17102F" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Product Search */}
-            <View style={styles.pickerSearchWrap}>
-              <Ionicons name="search" size={16} color="#625A72" style={{ marginRight: 8 }} />
-              <TextInput
-                style={styles.pickerSearchInput}
-                placeholder="Search products or SKU..."
-                placeholderTextColor="#9A93A7"
-                value={productSearchQuery}
-                onChangeText={setProductSearchQuery}
-              />
-            </View>
-
-            <FlatList
-              data={masterProducts.filter(
-                (p) =>
-                  p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
-                  (p.sku && p.sku.toLowerCase().includes(productSearchQuery.toLowerCase())) ||
-                  (p.category && p.category.toLowerCase().includes(productSearchQuery.toLowerCase()))
-              )}
-              keyExtractor={(item) => item.id}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.productPickerRow}
-                  activeOpacity={0.7}
-                  onPress={() => handleSelectProduct(item)}
-                >
-                  <View style={styles.productPickerRowLeft}>
-                    <Text style={styles.productPickerName}>{item.name}</Text>
-                    <Text style={styles.productPickerSub}>
-                      SKU: {item.sku} • {item.category} • UoM: {item.uom}
-                    </Text>
-                  </View>
-                  <View style={styles.productPickerRowRight}>
-                    <Text style={styles.productPickerPrice}>
-                      ₹{(item.unitPrice || 0).toLocaleString()}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={16} color="#6D43C0" />
-                  </View>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <View style={{ padding: 24, alignItems: 'center' }}>
-                  <Text style={{ color: '#8B8498', fontSize: 13 }}>No products found</Text>
-                </View>
-              }
-            />
-          </View>
-        </View>
-      </Modal>
+      <CommonCalendarModal
+        visible={isCalendarVisible}
+        onClose={() => setIsCalendarVisible(false)}
+        onSelectDate={(formattedDate) => {
+          setConsignmentDate(formattedDate);
+          setIsCalendarVisible(false);
+        }}
+        selectedDate={consignmentDate}
+      />
 
       {/* ============================================================== */}
       {/* MODAL 2: SOURCE WAREHOUSE PICKER MODAL                         */}
@@ -1018,46 +1055,57 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {masterWarehouses.map((wh) => (
-                <TouchableOpacity
-                  key={wh.id}
-                  style={[
-                    styles.simplePickerRow,
-                    source === wh.name && styles.simplePickerRowActive,
-                  ]}
-                  onPress={() => {
-                    setSource(wh.name);
-                    setIsSourcePickerVisible(false);
-                  }}
-                >
-                  <Ionicons
-                    name="cube-outline"
-                    size={16}
-                    color={source === wh.name ? '#6D43C0' : '#625A72'}
-                    style={{ marginRight: 10 }}
-                  />
-                  <View style={{ flex: 1 }}>
+              {sourceWarehouseList.length === 0 ? (
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <Text style={{ color: '#8B8498', fontSize: 13 }}>
+                    No warehouses assigned to this user.
+                  </Text>
+                </View>
+              ) : (
+                sourceWarehouseList.map((whName, idx) => (
+                  <TouchableOpacity
+                    key={`wh-${idx}`}
+                    style={[
+                      styles.simplePickerRow,
+                      source === whName && styles.simplePickerRowActive,
+                    ]}
+                    onPress={() => {
+                      setSource(whName);
+                      setIsSourcePickerVisible(false);
+                    }}
+                  >
+                    <Ionicons
+                      name="cube-outline"
+                      size={16}
+                      color={source === whName ? '#6D43C0' : '#625A72'}
+                      style={{ marginRight: 10 }}
+                    />
                     <Text
                       style={[
                         styles.simplePickerText,
-                        source === wh.name && styles.simplePickerTextActive,
+                        source === whName && styles.simplePickerTextActive,
                       ]}
                     >
-                      {wh.name}
+                      {whName}
                     </Text>
-                    <Text style={styles.simplePickerSub}>
-                      {wh.city} • {wh.code}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                    {source === whName && (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color="#6D43C0"
+                        style={{ marginLeft: 'auto' }}
+                      />
+                    )}
+                  </TouchableOpacity>
+                ))
+              )}
             </ScrollView>
           </View>
         </View>
       </Modal>
 
       {/* ============================================================== */}
-      {/* MODAL 3: DESTINATION EVENT / VENUE PICKER MODAL                */}
+      {/* MODAL 3: DESTINATION EVENT PICKER MODAL                        */}
       {/* ============================================================== */}
       <Modal
         visible={isDestPickerVisible}
@@ -1068,7 +1116,12 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
         <View style={styles.modalOverlay}>
           <View style={styles.pickerModalContent}>
             <View style={styles.pickerModalHeader}>
-              <Text style={styles.pickerModalTitle}>Select Destination Event / Venue</Text>
+              <View>
+                <Text style={styles.pickerModalTitle}>Select Destination Event</Text>
+                <Text style={{ fontSize: 11, color: '#817A91', marginTop: 2 }}>
+                  Active events and venues
+                </Text>
+              </View>
               <TouchableOpacity
                 onPress={() => setIsDestPickerVisible(false)}
                 style={styles.pickerCloseBtn}
@@ -1078,41 +1131,57 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {defaultDestinations.map((dst, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={[
-                    styles.simplePickerRow,
-                    destination === dst && styles.simplePickerRowActive,
-                  ]}
-                  onPress={() => {
-                    setDestination(dst);
-                    setIsDestPickerVisible(false);
-                  }}
-                >
-                  <Ionicons
-                    name="location-outline"
-                    size={16}
-                    color={destination === dst ? '#6D43C0' : '#625A72'}
-                    style={{ marginRight: 10 }}
-                  />
-                  <Text
-                    style={[
-                      styles.simplePickerText,
-                      destination === dst && styles.simplePickerTextActive,
-                    ]}
-                  >
-                    {dst}
+              {destinationEventList.length === 0 ? (
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <Text style={{ color: '#8B8498', fontSize: 13 }}>
+                    No events registered in Master.
                   </Text>
-                </TouchableOpacity>
-              ))}
+                </View>
+              ) : (
+                destinationEventList.map((evName, idx) => (
+                  <TouchableOpacity
+                    key={`ev-${idx}`}
+                    style={[
+                      styles.simplePickerRow,
+                      destination === evName && styles.simplePickerRowActive,
+                    ]}
+                    onPress={() => {
+                      setDestination(evName);
+                      setIsDestPickerVisible(false);
+                    }}
+                  >
+                    <Ionicons
+                      name="calendar-outline"
+                      size={16}
+                      color={destination === evName ? '#6D43C0' : '#625A72'}
+                      style={{ marginRight: 10 }}
+                    />
+                    <Text
+                      style={[
+                        styles.simplePickerText,
+                        destination === evName && styles.simplePickerTextActive,
+                      ]}
+                    >
+                      {evName}
+                    </Text>
+                    {destination === evName && (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color="#6D43C0"
+                        style={{ marginLeft: 'auto' }}
+                      />
+                    )}
+                  </TouchableOpacity>
+                ))
+              )}
             </ScrollView>
           </View>
         </View>
       </Modal>
 
       {/* ============================================================== */}
-      {/* MODAL 4: CARRIER PICKER MODAL                                  */}
+      {/* MODAL 4: CARRIER / TRANSPORTER PICKER MODAL                    */}
       {/* ============================================================== */}
       <Modal
         visible={isCarrierPickerVisible}
@@ -1124,7 +1193,9 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
           <View style={styles.pickerModalContent}>
             <View style={styles.pickerModalHeader}>
               <Text style={styles.pickerModalTitle}>
-                {shippingMethod === 'courier' ? 'Select Courier Carrier' : 'Select Freight Transporter'}
+                {shippingMethod === 'courier'
+                  ? 'Choose Carrier'
+                  : 'Choose Transporter'}
               </Text>
               <TouchableOpacity
                 onPress={() => setIsCarrierPickerVisible(false)}
@@ -1134,32 +1205,190 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {(shippingMethod === 'courier' ? KNOWN_COURIERS : KNOWN_TRANSPORTERS).map(
-                (c, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={styles.simplePickerRow}
-                    onPress={() => {
-                      if (shippingMethod === 'courier') {
-                        setCourierCarrier(c);
-                      } else {
-                        setTransporter(c);
-                      }
-                      setIsCarrierPickerVisible(false);
-                    }}
-                  >
-                    <Ionicons
-                      name="paper-plane-outline"
-                      size={16}
-                      color="#6D43C0"
-                      style={{ marginRight: 10 }}
-                    />
-                    <Text style={styles.simplePickerText}>{c}</Text>
-                  </TouchableOpacity>
-                )
+            {/* Inline Add New Entity Form */}
+            <View style={styles.addEntityInputRow}>
+              <TextInput
+                style={styles.addEntityInput}
+                placeholder={
+                  shippingMethod === 'courier'
+                    ? 'Enter new carrier name...'
+                    : 'Enter new transporter name...'
+                }
+                placeholderTextColor="#9A93A7"
+                value={newLogisticsName}
+                onChangeText={setNewLogisticsName}
+              />
+              <TouchableOpacity
+                style={styles.addEntityBtn}
+                activeOpacity={0.7}
+                onPress={handleAddLogisticsEntity}
+              >
+                <Ionicons name="add" size={16} color="#FFFFFF" />
+                <Text style={styles.addEntityBtnText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
+              {(shippingMethod === 'courier' ? carrierList : transporterList).map((c, idx) => {
+                const isSelected =
+                  shippingMethod === 'courier' ? courierCarrier === c : transporter === c;
+                return (
+                  <View key={idx} style={styles.entityRowContainer}>
+                    <TouchableOpacity
+                      style={[styles.simplePickerRow, { flex: 1, borderBottomWidth: 0 }]}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (shippingMethod === 'courier') {
+                          setCourierCarrier(c);
+                        } else {
+                          setTransporter(c);
+                        }
+                        setIsCarrierPickerVisible(false);
+                      }}
+                    >
+                      <Ionicons
+                        name={shippingMethod === 'courier' ? 'cube-outline' : 'bus-outline'}
+                        size={16}
+                        color={isSelected ? '#6D43C0' : '#8A819F'}
+                        style={{ marginRight: 10 }}
+                      />
+                      <Text
+                        style={[
+                          styles.simplePickerText,
+                          isSelected && { color: '#6D43C0', fontWeight: '700' },
+                        ]}
+                      >
+                        {c}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.deleteEntityBtn}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={() => handleDeleteLogisticsEntity(c)}
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#E03137" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+
+              {(shippingMethod === 'courier' ? carrierList : transporterList).length === 0 && (
+                <View style={styles.emptyEntityContainer}>
+                  <Ionicons name="information-circle-outline" size={24} color="#9A93A7" />
+                  <Text style={styles.emptyEntityText}>
+                    {shippingMethod === 'courier'
+                      ? 'No carriers yet. Add a carrier above.'
+                      : 'No transporters yet. Add a transporter above.'}
+                  </Text>
+                </View>
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ============================================================== */}
+      {/* MODAL 5: FULL PRODUCT PICKER MODAL (Backup selector)           */}
+      {/* ============================================================== */}
+      <Modal
+        visible={isProductPickerVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIsProductPickerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={styles.pickerModalTitle}>Select Master Product</Text>
+              <TouchableOpacity
+                onPress={() => setIsProductPickerVisible(false)}
+                style={styles.pickerCloseBtn}
+              >
+                <Ionicons name="close" size={20} color="#17102F" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pickerSearchWrap}>
+              <Ionicons
+                name="search"
+                size={16}
+                color="#625A72"
+                style={{ marginRight: 8 }}
+              />
+              <TextInput
+                style={styles.pickerSearchInput}
+                placeholder="Search products or SKU..."
+                placeholderTextColor="#9A93A7"
+                value={productSearchQuery}
+                onChangeText={setProductSearchQuery}
+              />
+            </View>
+
+            <FlatList
+              data={masterProducts.filter(
+                (p) =>
+                  p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+                  (p.sku &&
+                    p.sku.toLowerCase().includes(productSearchQuery.toLowerCase())) ||
+                  (p.category &&
+                    p.category.toLowerCase().includes(productSearchQuery.toLowerCase()))
+              )}
+              keyExtractor={(item) => item.id}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => {
+                const itemBadge = getTrackingBadgeStyle(item.trackingType);
+                return (
+                  <TouchableOpacity
+                    style={styles.productPickerRow}
+                    activeOpacity={0.7}
+                    onPress={() => handleSelectProduct(item)}
+                  >
+                    <View style={styles.productPickerRowLeft}>
+                      <Text style={styles.productPickerName}>{item.name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                        <View
+                          style={[
+                            styles.trackingBadgeSmall,
+                            { backgroundColor: itemBadge.bg },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.trackingBadgeSmallText,
+                              { color: itemBadge.text },
+                            ]}
+                          >
+                            {itemBadge.label}
+                          </Text>
+                        </View>
+                        <Text style={styles.productPickerSub}>
+                          {' '}• {item.sku} • {item.uom}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.productPickerRowRight}>
+                      <Text style={styles.productPickerPrice}>
+                        ₹{(item.unitPrice || 0).toLocaleString()}
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={16}
+                        color="#6D43C0"
+                      />
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+              ListEmptyComponent={
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <Text style={{ color: '#8B8498', fontSize: 13 }}>
+                    No products found
+                  </Text>
+                </View>
+              }
+            />
           </View>
         </View>
       </Modal>
@@ -1170,18 +1399,20 @@ export default function CreateOutboundScreen({ onCancel, onSaveOutbound }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F4FA',
+    backgroundColor: '#F3F0F8',
   },
+
+  // 1. TOP NAVY HEADER matching Inbound (#17102F)
   topNavyHeader: {
     backgroundColor: '#17102F',
+    paddingTop: Platform.OS === 'ios' ? 44 : 20,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 16,
+    paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: '#2B2050',
+    borderBottomColor: '#261B46',
   },
   navyHeaderLeft: {
     flexDirection: 'row',
@@ -1189,23 +1420,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   backIconButton: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: '#271D47',
+    borderWidth: 1,
+    borderColor: '#3D2F6B',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
   },
   navyTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: -0.2,
   },
   navySubtitle: {
     fontSize: 11,
-    color: '#D8D0EA',
+    color: '#C6BEE0',
     marginTop: 2,
   },
   badgeLiveMode: {
@@ -1229,6 +1462,7 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
 
+  // Breadcrumb matching Inbound
   breadcrumbRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1242,6 +1476,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
+  // Shared White Card styling
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -1249,113 +1484,101 @@ const styles = StyleSheet.create({
     borderColor: '#E5DFF0',
     padding: 14,
     marginBottom: 14,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#17102F',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
   },
   cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 4,
   },
   cardTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#211642',
-    letterSpacing: -0.2,
+    color: '#21183B',
+  },
+  cardSubtitle: {
+    fontSize: 11,
+    color: '#777187',
+    marginBottom: 10,
   },
   sectionBadge: {
     backgroundColor: '#F0ECFA',
     paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 4,
+    paddingVertical: 2,
+    borderRadius: 5,
   },
   sectionBadgeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#372064',
-  },
-  cardSubtitle: {
-    fontSize: 11,
-    color: '#625A72',
-    marginBottom: 10,
+    color: '#6D43C0',
   },
 
+  // Fields Grid
   fieldsRow: {
     flexDirection: 'row',
-    marginHorizontal: -5,
-    marginBottom: 10,
+    gap: 10,
+    marginTop: 8,
   },
   fieldCol: {
     flex: 1,
-    paddingHorizontal: 5,
   },
   fieldLabel: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 11,
     color: '#625A72',
-    marginBottom: 5,
+    marginBottom: 4,
+    fontWeight: '500',
   },
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D9D3E5',
-    borderRadius: 6,
-    height: 36,
+    borderColor: '#D9D4E3',
+    borderRadius: 7,
     paddingHorizontal: 8,
+    height: 36,
+    backgroundColor: '#FFFFFF',
   },
   textInput: {
     flex: 1,
-    fontSize: 11,
-    color: '#211642',
+    fontSize: 12,
+    color: '#21183B',
     paddingVertical: 0,
   },
   dropdownInput: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D9D3E5',
-    borderRadius: 6,
-    height: 36,
+    borderColor: '#D9D4E3',
+    borderRadius: 7,
     paddingHorizontal: 8,
+    height: 36,
+    backgroundColor: '#FFFFFF',
   },
   dropdownText: {
-    fontSize: 11,
-    color: '#211642',
+    fontSize: 12,
+    color: '#21183B',
     flex: 1,
-    marginRight: 4,
   },
   cardValidationHint: {
     fontSize: 10,
-    color: '#8B8498',
-    marginTop: 4,
+    color: '#938C9F',
+    marginTop: 8,
     fontStyle: 'italic',
   },
 
+  // SECTION 2: PRODUCT DETAILS TABLE
   addItemBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#6D43C0',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: 7,
   },
   addItemBtnText: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   productSubHeaderBar: {
@@ -1366,180 +1589,147 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     paddingHorizontal: 10,
     paddingVertical: 7,
+    marginTop: 8,
     marginBottom: 10,
   },
   productSubHeaderText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#372064',
-  },
-  productSubHeaderSub: {
-    fontSize: 9,
-    color: '#6D43C0',
-    fontWeight: '600',
+    color: '#49336F',
   },
 
+  // Horizontal Table Block
   tableScrollInner: {
     paddingBottom: 4,
   },
   tableBlock: {
     borderWidth: 1,
-    borderColor: '#D9D3E5',
-    borderRadius: 6,
+    borderColor: '#DCD7E8',
+    borderRadius: 7,
     overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
   },
   tableHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: '#F7F5FB',
+    backgroundColor: '#F8F7FC',
     borderBottomWidth: 1,
-    borderBottomColor: '#D9D3E5',
+    borderBottomColor: '#DCD7E8',
   },
   thCell: {
-    paddingVertical: 7,
-    paddingHorizontal: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
     borderRightWidth: 1,
-    borderRightColor: '#D9D3E5',
+    borderRightColor: '#DCD7E8',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   thText: {
-    fontSize: 8.5,
-    fontWeight: '700',
-    color: '#372064',
-    textAlign: 'center',
-  },
-
-  tableBodyRow: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#EDE9F4',
-    minHeight: 38,
-  },
-  tdCell: {
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-    borderRightWidth: 1,
-    borderRightColor: '#EDE9F4',
-    justifyContent: 'center',
-  },
-  tdSrText: {
-    fontSize: 9,
-    color: '#625A72',
-    fontWeight: '600',
-  },
-  tdDropdownBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FAF9FD',
-    borderWidth: 1,
-    borderColor: '#E5DFF0',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-  },
-  tdDropdownText: {
-    fontSize: 9.5,
-    color: '#211642',
-    fontWeight: '600',
-    flex: 1,
-    marginRight: 2,
-  },
-  tdTextInput: {
-    fontSize: 9.5,
-    color: '#211642',
-    borderWidth: 1,
-    borderColor: '#E5DFF0',
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 5,
-    paddingVertical: 3,
-    textAlign: 'center',
-  },
-  tdNumericInput: {
-    fontWeight: '700',
-    color: '#372064',
-  },
-  tdAmountText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#211642',
+    color: '#49336F',
   },
-  tdActionBtn: {
-    padding: 4,
+  tableBodyRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E3DFEC',
+    backgroundColor: '#FFFFFF',
+    minHeight: 52,
+  },
+  tdCell: {
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRightWidth: 1,
+    borderRightColor: '#E3DFEC',
+    justifyContent: 'center',
   },
 
+  // Tracking Badges
+  trackingBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 5,
+  },
+  trackingBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  trackingBadgeSmall: {
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 4,
+  },
+  trackingBadgeSmallText: {
+    fontSize: 8,
+    fontWeight: '700',
+  },
+
+  tdUomText: {
+    fontSize: 11,
+    color: '#332B45',
+  },
+
+  // Table Total Row
   tableTotalRow: {
     flexDirection: 'row',
-    backgroundColor: '#F5F2FC',
-    minHeight: 32,
+    backgroundColor: '#F5F2FA',
+    minHeight: 38,
     alignItems: 'center',
   },
   totalRowLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#372064',
-    letterSpacing: 0.3,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#49336F',
   },
   totalRowQty: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#5521B5',
+    color: '#6D43C0',
   },
   totalRowAmount: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#03543F',
+    color: '#6D43C0',
+    paddingRight: 8,
+    textAlign: 'right',
   },
 
-  productFooterNotes: {
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F0ECFA',
-  },
-  bulletNoteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  bulletNoteText: {
-    fontSize: 9.5,
-    color: '#625A72',
-    flex: 1,
-  },
-
+  // SECTION 3: SHIPPING METHOD
   methodStatusBadge: {
-    backgroundColor: '#EDEBFE',
+    backgroundColor: '#E8F5E9',
     paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 4,
+    paddingVertical: 2,
+    borderRadius: 5,
   },
   methodStatusBadgeText: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '600',
-    color: '#5521B5',
+    color: '#2E7D32',
   },
   methodToggleContainer: {
     flexDirection: 'row',
-    marginBottom: 14,
+    backgroundColor: '#EAE6F2',
+    borderRadius: 8,
+    padding: 3,
+    marginBottom: 12,
   },
   methodToggleBtn: {
     flex: 1,
     flexDirection: 'row',
-    height: 38,
-    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 3,
+    paddingVertical: 8,
+    borderRadius: 6,
   },
   methodToggleBtnActive: {
     backgroundColor: '#6D43C0',
+    shadowColor: '#6D43C0',
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 2,
   },
   methodToggleBtnInactive: {
-    backgroundColor: '#F0ECFA',
-    borderWidth: 1,
-    borderColor: '#E5DFF0',
+    backgroundColor: 'transparent',
   },
   methodToggleText: {
     fontSize: 12,
@@ -1547,184 +1737,81 @@ const styles = StyleSheet.create({
   },
   methodToggleTextActive: {
     color: '#FFFFFF',
+    fontWeight: '700',
   },
   methodToggleTextInactive: {
-    color: '#372064',
+    color: '#49336F',
   },
-
   methodSectionBlock: {
-    marginBottom: 8,
+    marginTop: 4,
   },
   transportBanner: {
-    backgroundColor: '#F7F5FB',
+    backgroundColor: '#F0ECFA',
     borderRadius: 6,
     paddingHorizontal: 8,
-    paddingVertical: 6,
-    marginBottom: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: '#6D43C0',
-  },
-  transportBannerTitle: {
-    fontSize: 10.5,
-    fontWeight: '700',
-    color: '#211642',
-  },
-  methodFooterNotes: {
-    borderTopWidth: 1,
-    borderTopColor: '#E5DFF0',
-    paddingTop: 8,
-    marginTop: 6,
-  },
-  methodNoteText: {
-    fontSize: 9.5,
-    color: '#625A72',
-    lineHeight: 14,
-  },
-
-  readyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#DEF7EC',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  readyBadgeText: {
-    fontSize: 9.5,
-    fontWeight: '600',
-    color: '#03543F',
-  },
-  reviewGrid: {
-    flexDirection: 'row',
-    marginHorizontal: -4,
-    marginBottom: 10,
-  },
-  reviewCardItem: {
-    flex: 1,
-    backgroundColor: '#F7F5FB',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#EDE9F4',
-    padding: 8,
-    marginHorizontal: 4,
-  },
-  reviewItemLabel: {
-    fontSize: 8.5,
-    fontWeight: '800',
-    color: '#8B8498',
-    marginBottom: 2,
-    letterSpacing: 0.5,
-  },
-  reviewItemValueMain: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#211642',
-    marginBottom: 2,
-  },
-  reviewItemSub: {
-    fontSize: 9.5,
-    color: '#625A72',
-  },
-  reviewMethodPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0ECFA',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingVertical: 4,
     marginBottom: 8,
   },
-  reviewMethodText: {
+  transportBannerTitle: {
     fontSize: 10,
-    color: '#372064',
-    fontWeight: '600',
-    flex: 1,
-  },
-  reviewDraftNotice: {
-    fontSize: 9.5,
-    color: '#8B8498',
-    fontStyle: 'italic',
-  },
-
-  actionsBarCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5DFF0',
-    padding: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#17102F',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  cancelBtn: {
-    flex: 1,
-    height: 38,
-    backgroundColor: '#F0ECFA',
-    borderWidth: 1,
-    borderColor: '#D9D3E5',
-    borderRadius: 7,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 6,
-  },
-  cancelBtnText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#372064',
-  },
-  saveDraftBtn: {
-    flex: 1.2,
-    height: 38,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#6D43C0',
-    borderRadius: 7,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 6,
-  },
-  saveDraftBtnText: {
-    fontSize: 11,
     fontWeight: '600',
     color: '#6D43C0',
   },
-  createInboundBtn: {
-    flex: 1.5,
-    height: 38,
-    backgroundColor: '#6D43C0',
-    borderRadius: 7,
+
+  // SECTION 4: ACTIONS BAR
+  actionsBarCard: {
     flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  cancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#74648E',
+    backgroundColor: '#2A2143',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  createInboundBtnText: {
-    fontSize: 11,
+  cancelBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  saveDraftBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#6D43C0',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#6D43C0',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  saveDraftBtnText: {
+    fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
   },
 
+  // MODALS
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(23, 16, 47, 0.6)',
+    backgroundColor: 'rgba(11, 7, 25, 0.6)',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   pickerModalContent: {
+    width: '100%',
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    maxHeight: '75%',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: '80%',
     padding: 16,
   },
   pickerModalHeader: {
@@ -1734,7 +1821,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   pickerModalTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#17102F',
   },
@@ -1745,8 +1832,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F5F4FA',
-    borderWidth: 1,
-    borderColor: '#E5DFF0',
     borderRadius: 8,
     paddingHorizontal: 10,
     height: 38,
@@ -1754,13 +1839,14 @@ const styles = StyleSheet.create({
   },
   pickerSearchInput: {
     flex: 1,
-    fontSize: 12,
-    color: '#211642',
+    fontSize: 13,
+    color: '#21183B',
+    paddingVertical: 0,
   },
   productPickerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F0ECFA',
@@ -1770,50 +1856,254 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   productPickerName: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: '#211642',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#21183B',
   },
   productPickerSub: {
-    fontSize: 10,
-    color: '#625A72',
-    marginTop: 2,
+    fontSize: 11,
+    color: '#817A91',
   },
   productPickerRowRight: {
-    alignItems: 'flex-end',
     flexDirection: 'row',
+    alignItems: 'center',
   },
   productPickerPrice: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#6D43C0',
     marginRight: 6,
   },
-
   simplePickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 8,
-    borderRadius: 6,
     borderBottomWidth: 1,
-    borderBottomColor: '#F5F4FA',
+    borderBottomColor: '#F0ECFA',
+    borderRadius: 6,
   },
   simplePickerRowActive: {
-    backgroundColor: '#F3EEFF',
+    backgroundColor: '#F0ECFA',
   },
   simplePickerText: {
-    fontSize: 12,
-    color: '#211642',
+    fontSize: 13,
+    color: '#21183B',
     fontWeight: '500',
   },
   simplePickerTextActive: {
     color: '#6D43C0',
     fontWeight: '700',
   },
-  simplePickerSub: {
+
+  // Type-to-Search Product Input & Live Results
+  tdProductInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D4CEE2',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    height: 36,
+  },
+  tdProductTextInput: {
+    flex: 1,
+    fontSize: 11,
+    color: '#211642',
+    fontWeight: '600',
+    padding: 0,
+  },
+  tdProductSkuText: {
     fontSize: 9.5,
-    color: '#8B8498',
+    color: '#706584',
     marginTop: 2,
+    marginLeft: 2,
+  },
+  zipDropdownCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginTop: 4,
+    marginBottom: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 6,
+    overflow: 'hidden',
+    zIndex: 9999,
+  },
+  zipDropdownScroll: {
+    maxHeight: 180,
+  },
+  zipDropdownItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
+  },
+  zipDropdownItemActive: {
+    backgroundColor: '#F8FAFC',
+  },
+  zipDropdownItemText: {
+    fontSize: 13,
+    color: '#1F2937',
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  zipDropdownItemSub: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  liveSearchBox: {
+    marginTop: 10,
+    backgroundColor: '#FAF8FE',
+    borderWidth: 1,
+    borderColor: '#D9D3E5',
+    borderRadius: 10,
+    padding: 10,
+    shadowColor: '#17102F',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  liveSearchHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EBE5F5',
+  },
+  liveSearchTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#211642',
+  },
+  liveSearchCountBadge: {
+    backgroundColor: '#EBE4F8',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    marginLeft: 6,
+  },
+  liveSearchCountText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#6D43C0',
+  },
+  liveSearchScroll: {
+    maxHeight: 180,
+  },
+  liveSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#ECE7F6',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 5,
+  },
+  liveSearchRowIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#F3EEFB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  liveSearchRowName: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#211642',
+  },
+  liveSearchRowMeta: {
+    fontSize: 10,
+    color: '#706584',
+    marginTop: 2,
+  },
+  liveSearchRowPrice: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#372064',
+    marginTop: 2,
+  },
+  liveSearchEmpty: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  liveSearchEmptyText: {
+    fontSize: 11.5,
+    color: '#706584',
+    fontWeight: '600',
+  },
+  liveSearchEmptySub: {
+    fontSize: 10,
+    color: '#9E96AF',
+    marginTop: 2,
+  },
+  addEntityInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  addEntityInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: '#F9F8FC',
+    borderWidth: 1,
+    borderColor: '#D8D1E8',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: '#1E1B26',
+  },
+  addEntityBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6D43C0',
+    paddingHorizontal: 14,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+  },
+  addEntityBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+    marginLeft: 4,
+  },
+  entityRowContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EBF7',
+  },
+  deleteEntityBtn: {
+    padding: 8,
+    marginLeft: 4,
+  },
+  emptyEntityContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+  },
+  emptyEntityText: {
+    fontSize: 12,
+    color: '#8A819F',
+    marginTop: 6,
+    textAlign: 'center',
   },
 });

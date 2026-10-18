@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
@@ -7,13 +7,96 @@ import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import MainAppContainer from './src/screens/MainAppContainer';
 import { authService } from './src/services/authService';
+import masterService from './src/services/masterService';
+import inboundService from './src/services/inboundService';
+import movementService from './src/services/movementService';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('splash');
   const [session, setSession] = useState(null);
   const [recoveryEmail, setRecoveryEmail] = useState('');
 
-  const handleSplashFinish = () => {
+  useEffect(() => {
+    let isMounted = true;
+
+    async function bootstrap() {
+      try {
+        await Promise.all([
+          authService.init(),
+          masterService.init(),
+          inboundService.init(),
+          movementService.init(),
+        ]);
+        if (isMounted && authService.isSessionValid()) {
+          const live = authService.getCurrentSession();
+          if (live) {
+            setSession({ ...live });
+          }
+        }
+      } catch (err) {
+        console.warn('Bootstrap error:', err);
+      }
+    }
+    bootstrap();
+
+    const unsubscribe = authService.subscribe((event) => {
+      if (event?.session) {
+        setSession({ ...event.session });
+      } else {
+        const live = authService.getCurrentSession();
+        if (live && authService.isSessionValid()) {
+          setSession({ ...live });
+        } else if (!live) {
+          setSession(null);
+        }
+      }
+    });
+
+    const sub = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'active') {
+        try {
+          if (authService.isSessionValid()) {
+            const live = authService.getCurrentSession();
+            if (live) {
+              setSession({ ...live });
+              setCurrentScreen((prev) => (prev === 'login' || prev === 'splash' ? 'dashboard' : prev));
+            }
+          } else {
+            // Genuinely expired (> 8 hours) or already logged out
+            const live = authService.getCurrentSession();
+            if (live) {
+              await authService.logout();
+              setSession(null);
+              setCurrentScreen('login');
+            }
+          }
+        } catch (e) {
+          console.warn('AppState resume check error:', e);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+      sub.remove();
+    };
+  }, []);
+
+  const handleSplashFinish = async () => {
+    try {
+      await authService.init();
+      if (authService.isSessionValid()) {
+        const live = authService.getCurrentSession();
+        if (live) {
+          setSession({ ...live });
+          setCurrentScreen('dashboard');
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Error on splash finish:', err);
+    }
     setCurrentScreen('login');
   };
 
@@ -22,10 +105,12 @@ export default function App() {
     setCurrentScreen('dashboard');
   };
 
-  const handleLogout = () => {
-    authService.logout();
+  const handleLogout = async () => {
     setSession(null);
     setCurrentScreen('login');
+    try {
+      await authService.logout();
+    } catch (_) {}
   };
 
   const handleReplaySplash = () => {

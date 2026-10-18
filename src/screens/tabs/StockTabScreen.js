@@ -5,58 +5,33 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  TextInput,
-  StatusBar,
-  FlatList,
+  Modal,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import masterService from '../../services/masterService';
 import AvailableDamageScreen from './AvailableDamageScreen';
-import TablePagination from '../../components/TablePagination';
 
 export default function StockTabScreen({ session, onLogout }) {
-  const getProductsSafe = () =>
-    masterService && typeof masterService.getProducts === 'function'
-      ? masterService.getProducts()
-      : [];
   const getLogsSafe = () =>
     masterService && typeof masterService.getStockActionLogs === 'function'
       ? masterService.getStockActionLogs()
       : [];
 
-  const [products, setProducts] = useState(getProductsSafe());
   const [actionLogs, setActionLogs] = useState(getLogsSafe());
   const [isAvailableDamageOpen, setIsAvailableDamageOpen] = useState(false);
   const [selectedInitialProduct, setSelectedInitialProduct] = useState(null);
-
-  // Search & Filter
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'DAMAGED' | 'LOW'
 
   // Toast Notification state matching video
   const [toastMessage, setToastMessage] = useState(null);
   const [toastVisible, setToastVisible] = useState(false);
 
-  // 10-Row Pagination State
-  const [inventoryPage, setInventoryPage] = useState(1);
-  const INVENTORY_PER_PAGE = 10;
-
-  // Selected warehouse
-  const [warehouse, setWarehouse] = useState('Sagar Complex Warehouse');
-
   const refreshData = () => {
-    setProducts(getProductsSafe());
     setActionLogs(getLogsSafe());
   };
 
   useEffect(() => {
     refreshData();
   }, []);
-
-  // Reset pagination on search or filter change
-  useEffect(() => {
-    setInventoryPage(1);
-  }, [searchQuery, filterType]);
 
   const showToast = (message) => {
     setToastMessage(message);
@@ -80,67 +55,27 @@ export default function StockTabScreen({ session, onLogout }) {
     }
   };
 
-  // Filtered products
-  const filteredProducts = products.filter((p) => {
-    const q = searchQuery.toLowerCase().trim();
-    const matchesSearch =
-      !q ||
-      p.name.toLowerCase().includes(q) ||
-      p.sku.toLowerCase().includes(q) ||
-      (p.lotNumber && p.lotNumber.toLowerCase().includes(q));
-
-    if (!matchesSearch) return false;
-    if (filterType === 'DAMAGED') return (p.damagedQty || 0) > 0;
-    if (filterType === 'LOW') return (p.availableQty || 0) <= (p.lowStockAlert || 5);
-    return true;
-  });
-
-  const paginatedProducts = filteredProducts.slice(
-    (inventoryPage - 1) * INVENTORY_PER_PAGE,
-    inventoryPage * INVENTORY_PER_PAGE
-  );
-
-  const totalAvailable = products.reduce((acc, p) => acc + (p.availableQty || 0), 0);
-  const totalDamaged = products.reduce((acc, p) => acc + (p.damagedQty || 0), 0);
-
-  // If Available / Damage screen is opened, render it directly
-  if (isAvailableDamageOpen) {
-    return (
-      <AvailableDamageScreen
-        initialProduct={selectedInitialProduct}
-        onClose={() => setIsAvailableDamageOpen(false)}
-        onAdjustmentComplete={handleAdjustmentComplete}
-      />
-    );
-  }
-
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1E1435" />
-
-      {/* Top Header Card */}
+      {/* Full-Screen Scanner Modal covering top header and bottom tabs */}
+      <Modal
+        visible={isAvailableDamageOpen}
+        animationType="slide"
+        statusBarTranslucent={true}
+        onRequestClose={() => setIsAvailableDamageOpen(false)}
+      >
+        <AvailableDamageScreen
+          initialProduct={selectedInitialProduct}
+          onClose={() => setIsAvailableDamageOpen(false)}
+          onAdjustmentComplete={handleAdjustmentComplete}
+        />
+      </Modal>
+      {/* 1. STOCK HEADER */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <View>
-            <Text style={styles.greetingText}>
-              Hello, {session?.user?.name || session?.role || 'Demo1'}
-            </Text>
-            <View style={styles.warehousePill}>
-              <Ionicons name="business-outline" size={13} color="#D1C4E9" />
-              <Text style={styles.warehouseText}>{warehouse}</Text>
-            </View>
+            <Text style={styles.greetingText}>Stock</Text>
           </View>
-          {onLogout && (
-            <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
-              <Ionicons name="log-out-outline" size={18} color="#EDE9FE" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Section Heading matching video */}
-        <View style={styles.stockActionHeading}>
-          <Text style={styles.stockActionTitle}>Stock Action</Text>
-          <Text style={styles.stockActionSubtitle}>View actions on stock</Text>
         </View>
       </View>
 
@@ -193,191 +128,6 @@ export default function StockTabScreen({ session, onLogout }) {
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Inventory Summary Metrics */}
-        <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Total SKUs</Text>
-            <Text style={styles.metricValue}>{products.length}</Text>
-          </View>
-          <View style={[styles.metricCard, { borderLeftColor: '#10B981', borderLeftWidth: 3 }]}>
-            <Text style={styles.metricLabel}>Available</Text>
-            <Text style={[styles.metricValue, { color: '#059669' }]}>
-              {totalAvailable} <Text style={styles.metricUnit}>Pcs</Text>
-            </Text>
-          </View>
-          <View style={[styles.metricCard, { borderLeftColor: '#EF4444', borderLeftWidth: 3 }]}>
-            <Text style={styles.metricLabel}>Damaged</Text>
-            <Text style={[styles.metricValue, { color: '#DC2626' }]}>
-              {totalDamaged} <Text style={styles.metricUnit}>Pcs</Text>
-            </Text>
-          </View>
-        </View>
-
-        {/* Live Inventory List Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Warehouse Inventory</Text>
-          <TouchableOpacity onPress={refreshData} style={styles.refreshPill}>
-            <Ionicons name="refresh" size={14} color="#8235F4" />
-            <Text style={styles.refreshPillText}>Sync</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Search & Filter Bar */}
-        <View style={styles.searchBarContainer}>
-          <Ionicons name="search" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by SKU, Product Name, Lot..."
-            placeholderTextColor="#94A3B8"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color="#94A3B8" />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {/* Filter Chips */}
-        <View style={styles.filterChipsRow}>
-          <TouchableOpacity
-            style={[styles.filterChip, filterType === 'ALL' && styles.filterChipActive]}
-            onPress={() => setFilterType('ALL')}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                filterType === 'ALL' && styles.filterChipTextActive,
-              ]}
-            >
-              All Items ({products.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.filterChip,
-              filterType === 'DAMAGED' && styles.filterChipActiveDamaged,
-            ]}
-            onPress={() => setFilterType('DAMAGED')}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                filterType === 'DAMAGED' && styles.filterChipTextDamaged,
-              ]}
-            >
-              Damaged ({products.filter((p) => (p.damagedQty || 0) > 0).length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.filterChip,
-              filterType === 'LOW' && styles.filterChipActive,
-            ]}
-            onPress={() => setFilterType('LOW')}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                filterType === 'LOW' && styles.filterChipTextActive,
-              ]}
-            >
-              Low Stock
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Product Cards */}
-        {filteredProducts.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="cube-outline" size={44} color="#CBD5E1" />
-            <Text style={styles.emptyTitle}>No Matching Inventory</Text>
-            <Text style={styles.emptyDesc}>Try adjusting your search query or filter.</Text>
-          </View>
-        ) : (
-          <View>
-            {paginatedProducts.map((item) => (
-              <View key={item.id} style={styles.productCard}>
-                <View style={styles.productCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.productName}>{item.name}</Text>
-                    <View style={styles.productMetaRow}>
-                      <Text style={styles.productSkuLabel}>SKU: </Text>
-                      <Text style={styles.productSkuValue}>{item.sku}</Text>
-                      <Text style={styles.productLotSep}> • </Text>
-                      <Text style={styles.productLotLabel}>Lot: </Text>
-                      <Text style={styles.productLotValue}>{item.lotNumber || 'N/A'}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.categoryBadge}>
-                    <Text style={styles.categoryBadgeText}>{item.category || 'Goods'}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.stockCountsRow}>
-                  <View style={styles.countBadgeAvailable}>
-                    <Ionicons name="checkmark-circle" size={14} color="#059669" />
-                    <Text style={styles.countBadgeTextAvailable}>
-                      Available: {item.availableQty || 0}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.countBadgeDamaged,
-                      (item.damagedQty || 0) > 0 && styles.countBadgeDamagedAlert,
-                    ]}
-                  >
-                    <Ionicons
-                      name="alert-circle"
-                      size={14}
-                      color={(item.damagedQty || 0) > 0 ? '#DC2626' : '#94A3B8'}
-                    />
-                    <Text
-                      style={[
-                        styles.countBadgeTextDamaged,
-                        (item.damagedQty || 0) > 0 && styles.countBadgeTextDamagedAlert,
-                      ]}
-                    >
-                      Damaged: {item.damagedQty || 0}
-                    </Text>
-                  </View>
-                  <View style={styles.countBadgeTotal}>
-                    <Text style={styles.countBadgeTextTotal}>
-                      Total: {(item.availableQty || 0) + (item.damagedQty || 0)}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.productCardActions}>
-                  <TouchableOpacity
-                    style={styles.adjustActionBtn}
-                    onPress={() => handleOpenAvailableDamage(item)}
-                  >
-                    <MaterialCommunityIcons
-                      name="swap-horizontal"
-                      size={16}
-                      color="#8235F4"
-                    />
-                    <Text style={styles.adjustActionBtnText}>Adjust Status</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-
-            {/* 10-Row Table Pagination matching user screenshot */}
-            <View style={{ borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
-              <TablePagination
-                currentPage={inventoryPage}
-                totalItems={filteredProducts.length}
-                itemsPerPage={INVENTORY_PER_PAGE}
-                onPageChange={setInventoryPage}
-                primaryColor="#38BDF8"
-              />
-            </View>
-          </View>
-        )}
 
         {/* Recent Adjustments Activity Log */}
         {actionLogs && actionLogs.length > 0 && (
@@ -448,12 +198,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6F5FB',
   },
   header: {
-    backgroundColor: '#1E1435',
-    paddingTop: 48,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    backgroundColor: '#FFFFFF',
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDE8F5',
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -461,44 +211,51 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   greetingText: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: '#1E1435',
     letterSpacing: -0.3,
   },
-  warehousePill: {
+  scopeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginTop: 6,
-    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
+  scopeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#20C997',
+    marginRight: 6,
+  },
+  headerScopeSubtitle: {
+    fontSize: 11,
+    color: '#706984',
+    fontWeight: '500',
   },
   warehouseText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#EDE9FE',
+    color: '#8235F4',
     marginLeft: 5,
   },
   logoutBtn: {
     padding: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: '#F3EEFF',
     borderRadius: 12,
   },
   stockActionHeading: {
-    marginTop: 18,
+    marginTop: 12,
   },
   stockActionTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: '#1E1435',
     letterSpacing: -0.2,
   },
   stockActionSubtitle: {
-    fontSize: 13,
-    color: '#C4B5FD',
+    fontSize: 11,
+    color: '#706984',
     marginTop: 2,
   },
 

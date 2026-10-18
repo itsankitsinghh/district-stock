@@ -39,3 +39,24 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Automated APK Delivery in File Manager (MANDATORY RULE)
+Whenever any feature, fix, or change is requested by the user:
+1. Always compile the release APK via Gradle (`cd android && gradlew.bat assembleRelease`).
+2. Automatically copy the generated APK directly into the user's File Manager / Downloads and Desktop folders (`C:\Users\Testing\Downloads\DistrictStock.apk`, `C:\Users\Testing\Desktop\DistrictStock.apk`, `C:\Users\Testing\OneDrive\Desktop\DistrictStock.apk`).
+3. Ensure the updated APK is immediately accessible in the user's Windows File Explorer / File Manager without them having to ask.
+
+## Strictly Locked Role-Based Tabs (MANDATORY RULE)
+The role-based tabs are strictly locked and must never be altered arbitrarily:
+1. **Admin**: Dashboard, Reports, Master, User Setup
+2. **Operation Manager**: Dashboard, Reports, Master, User Setup
+3. **Warehouse User**: Dashboard, Movement, Reports, Stock
+4. **Event User**: Dashboard, Movement, Reports, Stock
+5. **Event Planner**: Dashboard, Raise Requests, My Requisitions
+
+## No Auto-Added Data & Preserve Formatting (MANDATORY RULE)
+- NEVER auto-populate or insert mock, sample, or dummy records into any dataset (products, inventory, movements, warehouses, requisitions).
+- All operational data is created and populated manually by the user from their end.
+- Keep all existing layouts, styles, and formatting intact without unwanted changes.
+
+

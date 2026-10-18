@@ -3,6 +3,7 @@ import { StyleSheet, View, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getTabsForRole } from '../navigation/roleTabsConfig';
 import RoleBottomNavigation from '../components/RoleBottomNavigation';
+import DistrictTopHeader from '../components/DistrictTopHeader';
 
 // Role Tab Screens
 import DashboardTabScreen from './tabs/DashboardTabScreen';
@@ -21,6 +22,7 @@ export default function MainAppContainer({ session, onLogout }) {
 
   // Default to first tab (Dashboard)
   const [activeTabKey, setActiveTabKey] = useState(roleTabs[0]?.key || 'dashboard');
+  const [selectedDashboardWarehouse, setSelectedDashboardWarehouse] = useState('');
 
   // Verify that activeTabKey is actually authorized for the user's role
   const isAuthorizedTab = roleTabs.some((t) => t.key === activeTabKey);
@@ -29,7 +31,14 @@ export default function MainAppContainer({ session, onLogout }) {
   const renderActiveScreen = () => {
     switch (currentKey) {
       case 'dashboard':
-        return <DashboardTabScreen session={session} onLogout={onLogout} onNavigateTab={setActiveTabKey} />;
+        return (
+          <DashboardTabScreen
+            session={session}
+            onLogout={onLogout}
+            onNavigateTab={setActiveTabKey}
+            onSelectWarehouse={setSelectedDashboardWarehouse}
+          />
+        );
       case 'requests':
         return <RequestsTabScreen session={session} onLogout={onLogout} />;
       case 'reports':
@@ -37,9 +46,16 @@ export default function MainAppContainer({ session, onLogout }) {
       case 'master':
         return <MasterTabScreen session={session} onLogout={onLogout} />;
       case 'user-setup':
+      case 'userSetup':
         return <UserSetupTabScreen session={session} onLogout={onLogout} />;
       case 'movement':
-        return <MovementTabScreen session={session} onLogout={onLogout} />;
+        return (
+          <MovementTabScreen
+            session={session}
+            onLogout={onLogout}
+            selectedDashboardWarehouse={selectedDashboardWarehouse}
+          />
+        );
       case 'stock':
         return <StockTabScreen session={session} onLogout={onLogout} />;
       case 'raise-requests':
@@ -47,7 +63,14 @@ export default function MainAppContainer({ session, onLogout }) {
       case 'my-requisitions':
         return <MyRequisitionsTabScreen session={session} onLogout={onLogout} onNavigateTab={setActiveTabKey} />;
       default:
-        return <DashboardTabScreen session={session} onLogout={onLogout} onNavigateTab={setActiveTabKey} />;
+        return (
+          <DashboardTabScreen
+            session={session}
+            onLogout={onLogout}
+            onNavigateTab={setActiveTabKey}
+            onSelectWarehouse={setSelectedDashboardWarehouse}
+          />
+        );
     }
   };
 
@@ -55,6 +78,14 @@ export default function MainAppContainer({ session, onLogout }) {
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="#160D33" />
       <View style={styles.container}>
+        {/* Universal District Top Header across EVERY role & EVERY tab */}
+        <DistrictTopHeader
+          session={session}
+          onLogout={onLogout}
+          showTitle={false}
+          roundedBottom={true}
+        />
+
         {/* Active Tab Screen Area */}
         <View style={styles.screenWrapper}>
           {renderActiveScreen()}

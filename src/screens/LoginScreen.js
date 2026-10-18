@@ -107,6 +107,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
     };
 
     // Run immediately on screen appearance
+    authService.init();
     checkNetworkHealth();
 
     // Check periodically every 3 seconds for fast response when turning off data
@@ -138,7 +139,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
     }
 
     if (!userId.trim()) {
-      setUserIdError('Please enter your User ID or Email');
+      setUserIdError('Please enter your User ID');
       hasError = true;
     } else {
       setUserIdError('');
@@ -183,6 +184,11 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
     const trimmed = accessCode.trim();
     if (!trimmed) {
       setCodeError('Please enter your event access code');
+      return;
+    }
+
+    if (/^\d{3}$/.test(trimmed)) {
+      setCodeError(`Please enter the full access code starting with DS (e.g. DS${trimmed})`);
       return;
     }
 
@@ -340,10 +346,10 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
                       style={styles.inputLeadingIcon}
                     />
                     <View style={styles.inputInnerCol}>
-                      <Text style={styles.inputInnerLabel}>User ID or Email</Text>
+                      <Text style={styles.inputInnerLabel}>User ID</Text>
                       <TextInput
                         style={styles.inputInnerField}
-                        placeholder="super.admin@district.com"
+                        placeholder="Enter your User ID"
                         placeholderTextColor="#6B599C"
                         value={userId}
                         onChangeText={(val) => {
@@ -457,16 +463,8 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
             ) : (
               /* TAB 2: Ground Access / Access Code Mode */
               <>
-                {/* Access Code Section Header */}
-                <View style={styles.accessHeaderSection}>
-                  <Text style={styles.accessSectionTitle}>Access Code</Text>
-                  <Text style={styles.accessSectionSubtitle}>
-                    Enter the code assigned to your event team.
-                  </Text>
-                </View>
-
                 {/* Access Code Field */}
-                <View style={styles.fieldContainer}>
+                <View style={[styles.fieldContainer, { marginTop: 4, marginBottom: 18 }]}>
                   <View
                     style={[
                       styles.accessInputBox,
@@ -483,7 +481,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
                     <View style={styles.inputVerticalDivider} />
                     <TextInput
                       style={styles.accessInputField}
-                      placeholder="Enter access code"
+                      placeholder="Enter access code (e.g. DS101)"
                       placeholderTextColor="#6B599C"
                       value={accessCode}
                       onChangeText={(val) => {
@@ -504,14 +502,6 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
                       <Text style={styles.inlineErrorText}>{codeError}</Text>
                     </View>
                   )}
-                </View>
-
-                {/* Info Card */}
-                <View style={styles.infoCard}>
-                  <Ionicons name="information-circle" size={24} color="#A855F7" />
-                  <Text style={styles.infoCardText}>
-                    Use the code shared by your event manager for quick access to District Stock.
-                  </Text>
                 </View>
 
                 {/* Continue Button */}

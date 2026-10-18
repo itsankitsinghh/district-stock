@@ -13,6 +13,7 @@ import {
   FlatList,
   Animated,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -37,6 +38,31 @@ export default function AvailableDamageScreen({
 
   // Camera permissions
   const [permission, requestPermission] = useCameraPermissions();
+  const [cameraKey, setCameraKey] = useState(1);
+
+  // Auto-request or sync camera permission on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!permission?.granted) {
+          const res = await requestPermission();
+          if (res?.granted) {
+            setCameraKey((k) => k + 1);
+          }
+        } else {
+          setCameraKey((k) => k + 1);
+        }
+      } catch (e) {
+        console.warn('Error requesting camera permission:', e);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (permission?.granted) {
+      setCameraKey((k) => k + 1);
+    }
+  }, [permission?.granted]);
 
   // Scan or Product Selection Step: 'scanner' | 'details'
   const [currentStep, setCurrentStep] = useState(
@@ -50,7 +76,6 @@ export default function AvailableDamageScreen({
 
   // Scanner interactive states
   const [isTorchOn, setIsTorchOn] = useState(false);
-  const [quickPickVisible, setQuickPickVisible] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [photoPickerVisible, setPhotoPickerVisible] = useState(false);
 
@@ -258,9 +283,12 @@ export default function AvailableDamageScreen({
 
     return (
       <View style={styles.scannerContainer}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+
         {/* Real Live CameraView if permission granted */}
         {hasPermission ? (
           <CameraView
+            key={`damage-cam-surface-${cameraKey}`}
             style={StyleSheet.absoluteFillObject}
             facing="back"
             enableTorch={isTorchOn}
@@ -276,6 +304,12 @@ export default function AvailableDamageScreen({
               ],
             }}
             onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+            onCameraReady={() => {
+              console.log('Damage Camera View Ready');
+            }}
+            onMountError={(err) => {
+              console.warn('Damage Camera Mount Error:', err);
+            }}
           />
         ) : (
           <View style={[StyleSheet.absoluteFillObject, styles.cameraPlaceholder]}>
@@ -338,99 +372,15 @@ export default function AvailableDamageScreen({
           </Text>
         </View>
 
-        {/* Bottom Scanner Controls */}
-        <View style={styles.scannerBottomControls}>
-          {/* Flashlight button matching video */}
-          <TouchableOpacity
-            style={styles.flashLightBtn}
-            onPress={() => setIsTorchOn(!isTorchOn)}
-          >
-            <Ionicons
-              name={isTorchOn ? 'bulb' : 'bulb-outline'}
-              size={20}
-              color={isTorchOn ? '#FBBF24' : '#FFFFFF'}
-            />
-            <Text style={styles.flashLightText}>
-              {isTorchOn ? 'Torch On' : 'Touch for more light'}
+        {/* Clean Minimalist Bottom Area */}
+        <View style={styles.scannerBottomArea}>
+          <View style={styles.scannerHintBadge}>
+            <Ionicons name="scan-outline" size={16} color="#A78BFA" style={{ marginRight: 8 }} />
+            <Text style={styles.scannerHintBadgeText}>
+              Point camera at barcode or QR code
             </Text>
-          </TouchableOpacity>
-
-          {/* Direct Scan Trigger Button for Testing / Demo */}
-          <TouchableOpacity
-            style={styles.directScanActionBtn}
-            activeOpacity={0.85}
-            onPress={() =>
-              handleSelectProductFromScan(masterProducts[1] || masterProducts[0])
-            }
-          >
-            <Ionicons
-              name="scan-circle"
-              size={20}
-              color="#FFFFFF"
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.directScanActionBtnText}>
-              Scan Active Code (S-1337-XXX)
-            </Text>
-          </TouchableOpacity>
-
-          {/* Catalog Manual Picker */}
-          <TouchableOpacity
-            style={styles.manualPickBtn}
-            onPress={() => setQuickPickVisible(true)}
-          >
-            <Text style={styles.manualPickBtnText}>
-              Or Select Product from Catalog
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Catalog Quick Pick Modal */}
-        <Modal
-          visible={quickPickVisible}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setQuickPickVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.quickPickModal}>
-              <View style={styles.quickPickHeader}>
-                <Text style={styles.quickPickTitle}>Select Product to Adjust</Text>
-                <TouchableOpacity onPress={() => setQuickPickVisible(false)}>
-                  <Ionicons name="close" size={22} color="#17102F" />
-                </TouchableOpacity>
-              </View>
-              <FlatList
-                data={masterProducts}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.quickPickRow}
-                    onPress={() => {
-                      setQuickPickVisible(false);
-                      handleSelectProductFromScan(item);
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.quickPickProdName}>{item.name}</Text>
-                      <Text style={styles.quickPickProdSub}>
-                        SKU: {item.sku} • Lot: {item.lotNumber || 'LOT-AN-101'}
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.quickPickStockAvail}>
-                        Avail: {item.availableQty || 0}
-                      </Text>
-                      <Text style={styles.quickPickStockDmg}>
-                        Dmg: {item.damagedQty || 0}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-              />
-            </View>
           </View>
-        </Modal>
+        </View>
       </View>
     );
   }
@@ -764,6 +714,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
+  cameraWrapper: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
+  },
   cameraPlaceholder: {
     backgroundColor: '#110E1D',
     justifyContent: 'center',
@@ -799,7 +754,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   scannerHeader: {
-    paddingTop: 48,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 14 : 52,
     paddingHorizontal: 16,
     paddingBottom: 16,
     flexDirection: 'row',
@@ -826,6 +781,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'transparent',
   },
   viewfinderBox: {
     width: 250,
@@ -891,107 +847,27 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 14,
   },
-  scannerBottomControls: {
+  scannerBottomArea: {
     paddingHorizontal: 20,
-    paddingBottom: 36,
+    paddingBottom: Platform.OS === 'android' ? 36 : 48,
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-  },
-  flashLightBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginBottom: 14,
-  },
-  flashLightText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  directScanActionBtn: {
-    width: '100%',
-    backgroundColor: '#DC2626',
-    flexDirection: 'row',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  scannerHintBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    borderRadius: 14,
-    marginBottom: 10,
+    backgroundColor: 'rgba(23, 16, 47, 0.75)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.3)',
   },
-  directScanActionBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-  },
-  manualPickBtn: {
-    paddingVertical: 8,
-  },
-  manualPickBtnText: {
-    color: '#D1C4E9',
+  scannerHintBadgeText: {
+    color: '#E2E8F0',
     fontSize: 13,
     fontWeight: '600',
-    textDecorationLine: 'underline',
-  },
-
-  // Catalog Quick Pick Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'flex-end',
-  },
-  quickPickModal: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    maxHeight: '75%',
-  },
-  quickPickHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  quickPickTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#17102F',
-  },
-  quickPickRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F8FAFC',
-  },
-  quickPickProdName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  quickPickProdSub: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  quickPickStockAvail: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#059669',
-  },
-  quickPickStockDmg: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#DC2626',
-    marginTop: 2,
   },
 
   // ==========================================

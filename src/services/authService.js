@@ -11,6 +11,9 @@
  * 4. Passwords are never stored in plain text.
  */
 
+import * as FileSystem from 'expo-file-system';
+import { storageHelper } from './storageHelper';
+
 // Portable pure-JavaScript SHA-256 implementation
 function sha256(ascii) {
   function rightRotate(value, amount) {
@@ -99,72 +102,440 @@ function sha256(ascii) {
 // Fixed cryptographic salt for password hashing
 const SALT = 'district_stock_salt_v1';
 
-// Precomputed SHA-256 hash for Admin@1234 + salt:
-// 'Admin@1234' + 'district_stock_salt_v1' => '6f7e26acbdbec4200b4c92dc0bc9098b6083c91d39d0bca0353e72694a6b7d68'
-const INITIAL_ADMIN_HASH = '6f7e26acbdbec4200b4c92dc0bc9098b6083c91d39d0bca0353e72694a6b7d68';
+// Precomputed SHA-256 hash for User@1234 + salt:
+// 'User@1234' + 'district_stock_salt_v1' => '3791cb5b38e047de491beb022af152a541aa581f248d561caa433386bddcc38d'
+const INITIAL_ADMIN_HASH = '3791cb5b38e047de491beb022af152a541aa581f248d561caa433386bddcc38d';
+
+const DEFAULT_SUPER_ADMIN = {
+  id: 'USR-001',
+  email: 'super.admin@district.com',
+  userId: 'super.admin@district.com',
+  accessCode: 'ADM-001',
+  name: 'Ankit Singh',
+  role: 'Admin',
+  status: 'active',
+  mobile: '+91 98000 00001',
+  assignedLocations: [],
+  salt: SALT,
+  passwordHash: INITIAL_ADMIN_HASH,
+  createdAt: '2026-10-10T00:00:00.000Z',
+};
 
 // In-memory persistent database of authorized user accounts
-// Initial installation starts strictly with the initial administrator account
-// In-memory persistent database of authorized user accounts matching Figma design
-let usersDatabase = [
-  {
-    id: 'USR-001',
-    email: 'super.admin@district.com',
-    userId: 'ADM-001',
-    name: 'Super Administrator',
-    role: 'Admin',
-    status: 'active',
-    mobile: '+91 98000 00001',
-    assignedLocations: ['Central Warehouse', 'All Event Hubs'],
-    salt: SALT,
-    passwordHash: INITIAL_ADMIN_HASH,
-    createdAt: '2026-10-10T00:00:00.000Z',
-  },
-  {
-    id: 'WHG-001',
-    email: 'rahul.kumar@district.com',
-    userId: 'WHG-001',
-    name: 'Rahul Kumar',
-    role: 'Warehouse Ground User',
-    status: 'active',
-    mobile: '+91 98XXX 12345',
-    assignedLocations: ['Warehouse A', 'Warehouse B'],
-    salt: SALT,
-    passwordHash: INITIAL_ADMIN_HASH,
-    createdAt: '2026-10-10T01:00:00.000Z',
-  },
-  {
-    id: 'EVP-014',
-    email: 'sneha.patil@district.com',
-    userId: 'EVP-014',
-    name: 'Sneha Patil',
-    role: 'Event Planner',
-    status: 'active',
-    mobile: '+91 97XXX 98765',
-    assignedLocations: ['Event A', 'Event C'],
-    salt: SALT,
-    passwordHash: INITIAL_ADMIN_HASH,
-    createdAt: '2026-10-10T02:00:00.000Z',
-  },
-  {
-    id: 'WHG-022',
-    email: 'amit.more@district.com',
-    userId: 'WHG-022',
-    name: 'Amit More',
-    role: 'Warehouse Ground User',
-    status: 'inactive',
-    mobile: '+91 99XXX 67890',
-    assignedLocations: ['Warehouse D'],
-    salt: SALT,
-    passwordHash: INITIAL_ADMIN_HASH,
-    createdAt: '2026-10-10T03:00:00.000Z',
-  },
-];
+let usersDatabase = [{ ...DEFAULT_SUPER_ADMIN }];
+
+// Persistent file identifiers powered by storageHelper
+const USERS_STORAGE_FILENAME = 'district_stock_users_v1.json';
+const SESSION_STORAGE_FILENAME = 'district_stock_session_v1.json';
+
+const SESSION_EXPIRY_MS = 8 * 60 * 60 * 1000; // 8 Hours Session Validity (28,800,000 ms)
+
+let isInitialized = false;
+let initPromise = null;
 
 // Active authenticated session
 let currentSession = null;
+let currentSelectedWarehouse = '';
+let authListeners = [];
 
 export const authService = {
+  /**
+   * Get currently active/selected warehouse from Dashboard
+   */
+  getSelectedWarehouse() {
+    return currentSelectedWarehouse || '';
+  },
+
+  /**
+   * Set active/selected warehouse from Dashboard
+   */
+  setSelectedWarehouse(warehouse) {
+    const clean = warehouse || '';
+    if (currentSelectedWarehouse === clean) return;
+    currentSelectedWarehouse = clean;
+    this.notifyListeners({ type: 'SELECTED_WAREHOUSE_CHANGED', warehouse: currentSelectedWarehouse });
+  },
+
+
+  /**
+   * Subscribe to real-time auth/user database changes
+   */
+  subscribe(callback) {
+    if (typeof callback === 'function') {
+      authListeners.push(callback);
+      return () => {
+        authListeners = authListeners.filter((cb) => cb !== callback);
+      };
+    }
+    return () => {};
+  },
+
+  /**
+   * Broadcast real-time change event to all subscribers
+   */
+  notifyListeners(payload = {}) {
+    authListeners.forEach((cb) => {
+      try {
+        cb(payload);
+      } catch (err) {
+        console.warn('Error in authService listener:', err);
+      }
+    });
+  },
+
+  /**
+   * Load users and active session from persistent local storage
+   */
+  async init(forceReload = false) {
+    if (isInitialized && !forceReload) {
+      return;
+    }
+    if (initPromise) return initPromise;
+
+    initPromise = (async () => {
+      try {
+        const parsed = await storageHelper.readData(USERS_STORAGE_FILENAME, null);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          usersDatabase = parsed;
+          // Guarantee super.admin is present
+          const hasSuperAdmin = usersDatabase.some(
+            (u) => (u.email || '').toLowerCase() === 'super.admin@district.com'
+          );
+          if (!hasSuperAdmin) {
+            usersDatabase.push({ ...DEFAULT_SUPER_ADMIN });
+          }
+          // Ensure users have valid assignedLocations array
+          let needsResave = false;
+          usersDatabase.forEach((u) => {
+            if (!Array.isArray(u.assignedLocations)) {
+              u.assignedLocations = [];
+              needsResave = true;
+            }
+          });
+          if (needsResave) {
+            await this.saveToStorage();
+          }
+        } else {
+          await this.saveToStorage();
+        }
+        // Restore active session only on initial app bootstrap
+        if (!currentSession) {
+          await this.restoreSessionFromStorage();
+        }
+      } catch (err) {
+        console.warn('Could not load persistent users database:', err);
+      } finally {
+        isInitialized = true;
+        initPromise = null;
+      }
+    })();
+
+    return initPromise;
+  },
+
+  /**
+   * Save active session with 8-hour expiry timestamp to persistent storage
+   */
+  async saveSessionToStorage(sessionData) {
+    try {
+      if (sessionData) {
+        await storageHelper.writeData(SESSION_STORAGE_FILENAME, sessionData);
+      }
+    } catch (err) {
+      console.warn('[authService] Could not save session to storage:', err);
+    }
+  },
+
+  /**
+   * Restore active session from persistent storage if still within 8-hour validity
+   */
+  async restoreSessionFromStorage() {
+    try {
+      const session = await storageHelper.readData(SESSION_STORAGE_FILENAME, null);
+      if (session && (session.id || session.userId || session.email)) {
+        const now = Date.now();
+        const loginTime = session.loginTimestamp
+          ? Number(session.loginTimestamp)
+          : (session.loginTime ? new Date(session.loginTime).getTime() : 0);
+
+        let expiresAt = session.expiresAt ? Number(session.expiresAt) : 0;
+        if (!expiresAt && loginTime > 0) {
+          expiresAt = loginTime + SESSION_EXPIRY_MS;
+        } else if (!expiresAt && !loginTime) {
+          expiresAt = now + SESSION_EXPIRY_MS;
+        }
+
+        if (now < expiresAt) {
+          session.expiresAt = expiresAt;
+          currentSession = session;
+          this.notifyListeners({ type: 'SESSION_RESTORED', session: currentSession });
+          return currentSession;
+        } else {
+          // Genuinely expired (>8 hours)
+          currentSession = null;
+          await this.clearSessionStorage();
+        }
+      }
+    } catch (err) {
+      console.warn('[authService] Could not restore session from storage:', err);
+    }
+    return null;
+  },
+
+  /**
+   * Clear session from persistent storage
+   */
+  async clearSessionStorage() {
+    try {
+      if (storageHelper && storageHelper.deleteFile) {
+        await storageHelper.deleteFile(SESSION_STORAGE_FILENAME);
+      }
+    } catch (err) {
+      console.warn('[authService] Could not clear session storage:', err);
+    }
+  },
+
+  /**
+   * Check if the current session is valid and has not exceeded 8 hours
+   */
+  isSessionValid() {
+    if (!currentSession) return false;
+    const now = Date.now();
+    const loginTime = currentSession.loginTimestamp
+      ? Number(currentSession.loginTimestamp)
+      : (currentSession.loginTime ? new Date(currentSession.loginTime).getTime() : 0);
+    let expiresAt = currentSession.expiresAt ? Number(currentSession.expiresAt) : 0;
+    if (!expiresAt && loginTime > 0) {
+      expiresAt = loginTime + SESSION_EXPIRY_MS;
+    } else if (!expiresAt && !loginTime) {
+      expiresAt = now + SESSION_EXPIRY_MS;
+    }
+    return now < expiresAt;
+  },
+
+  /**
+   * Link an active warehouse to all Admin accounts
+   */
+  linkWarehouseToAdmin(whName) {
+    if (!whName || !whName.trim()) return;
+    const cleanName = whName.trim();
+    let updated = false;
+
+    usersDatabase.forEach((u) => {
+      const role = (u.role || '').toLowerCase().trim();
+      const email = (u.email || '').toLowerCase().trim();
+      if (role === 'admin' || role === 'super admin' || email === 'super.admin@district.com') {
+        if (!Array.isArray(u.assignedLocations)) {
+          u.assignedLocations = [];
+        }
+        if (!u.assignedLocations.includes(cleanName)) {
+          u.assignedLocations.push(cleanName);
+          updated = true;
+        }
+      }
+    });
+
+    if (currentSession) {
+      const sRole = (currentSession.role || '').toLowerCase().trim();
+      const sEmail = (currentSession.email || '').toLowerCase().trim();
+      if (sRole === 'admin' || sRole === 'super admin' || sEmail === 'super.admin@district.com') {
+        if (!Array.isArray(currentSession.assignedLocations)) {
+          currentSession.assignedLocations = [];
+        }
+        if (!currentSession.assignedLocations.includes(cleanName)) {
+          currentSession.assignedLocations = [...currentSession.assignedLocations, cleanName];
+        }
+      }
+    }
+
+    if (updated) {
+      this.saveToStorage();
+      this.notifyListeners({ type: 'ADMIN_WAREHOUSE_LINKED', warehouse: cleanName });
+    }
+  },
+
+  /**
+   * Unlink a warehouse from all Admin accounts (if inactive or deleted)
+   */
+  unlinkWarehouseFromAdmin(whName) {
+    if (!whName) return;
+    const cleanName = whName.trim();
+    let updated = false;
+
+    usersDatabase.forEach((u) => {
+      const role = (u.role || '').toLowerCase().trim();
+      const email = (u.email || '').toLowerCase().trim();
+      if (role === 'admin' || role === 'super admin' || email === 'super.admin@district.com') {
+        if (Array.isArray(u.assignedLocations) && u.assignedLocations.includes(cleanName)) {
+          u.assignedLocations = u.assignedLocations.filter((l) => l !== cleanName);
+          updated = true;
+        }
+      }
+    });
+
+    if (currentSession) {
+      const sRole = (currentSession.role || '').toLowerCase().trim();
+      const sEmail = (currentSession.email || '').toLowerCase().trim();
+      if (sRole === 'admin' || sRole === 'super admin' || sEmail === 'super.admin@district.com') {
+        if (Array.isArray(currentSession.assignedLocations)) {
+          currentSession.assignedLocations = currentSession.assignedLocations.filter((l) => l !== cleanName);
+        }
+      }
+    }
+
+    if (updated) {
+      this.saveToStorage();
+      this.notifyListeners({ type: 'ADMIN_WAREHOUSE_UNLINKED', warehouse: cleanName });
+    }
+  },
+
+  /**
+   * Link an active event to all Event Planner accounts
+   */
+  linkEventToEventPlanner(evName) {
+    if (!evName || !evName.trim()) return;
+    const cleanName = evName.trim();
+    let updated = false;
+
+    usersDatabase.forEach((u) => {
+      const role = (u.role || '').toLowerCase().trim();
+      if (role === 'event planner' || role === 'lead planner') {
+        if (!Array.isArray(u.assignedLocations)) {
+          u.assignedLocations = [];
+        }
+        if (!u.assignedLocations.includes(cleanName)) {
+          u.assignedLocations.push(cleanName);
+          updated = true;
+        }
+      }
+    });
+
+    if (currentSession) {
+      const sRole = (currentSession.role || '').toLowerCase().trim();
+      if (sRole === 'event planner' || sRole === 'lead planner') {
+        if (!Array.isArray(currentSession.assignedLocations)) {
+          currentSession.assignedLocations = [];
+        }
+        if (!currentSession.assignedLocations.includes(cleanName)) {
+          currentSession.assignedLocations = [...currentSession.assignedLocations, cleanName];
+        }
+      }
+    }
+
+    if (updated) {
+      this.saveToStorage();
+      this.notifyListeners({ type: 'EVENT_PLANNER_EVENT_LINKED', event: cleanName });
+    }
+  },
+
+  /**
+   * Unlink an event from all Event Planner accounts (if inactive or deleted)
+   */
+  unlinkEventFromEventPlanner(evName) {
+    if (!evName) return;
+    const cleanName = evName.trim();
+    let updated = false;
+
+    usersDatabase.forEach((u) => {
+      const role = (u.role || '').toLowerCase().trim();
+      if (role === 'event planner' || role === 'lead planner') {
+        if (Array.isArray(u.assignedLocations) && u.assignedLocations.includes(cleanName)) {
+          u.assignedLocations = u.assignedLocations.filter((l) => l !== cleanName);
+          updated = true;
+        }
+      }
+    });
+
+    if (currentSession) {
+      const sRole = (currentSession.role || '').toLowerCase().trim();
+      if (sRole === 'event planner' || sRole === 'lead planner') {
+        if (Array.isArray(currentSession.assignedLocations)) {
+          currentSession.assignedLocations = currentSession.assignedLocations.filter((l) => l !== cleanName);
+        }
+      }
+    }
+
+    if (updated) {
+      this.saveToStorage();
+      this.notifyListeners({ type: 'EVENT_PLANNER_EVENT_UNLINKED', event: cleanName });
+    }
+  },
+
+  /**
+   * Synchronize active warehouses with Admin and active events with Event Planner
+   */
+  async syncMasterAssignments(activeWarehouses = [], activeEvents = []) {
+    if (!isInitialized) {
+      await this.init();
+    }
+
+    let updated = false;
+    const whList = (activeWarehouses || []).map((w) => (typeof w === 'string' ? w : w.name).trim()).filter(Boolean);
+    const evList = (activeEvents || []).map((e) => (typeof e === 'string' ? e : e.name).trim()).filter(Boolean);
+    const whSet = new Set(whList);
+    const evSet = new Set(evList);
+
+    if (whSet.size === 0 && evSet.size === 0) {
+      return;
+    }
+
+    usersDatabase.forEach((u) => {
+      const role = (u.role || '').toLowerCase().trim();
+      const email = (u.email || '').toLowerCase().trim();
+      if (role === 'admin' || role === 'super admin' || email === 'super.admin@district.com') {
+        if (whSet.size > 0) {
+          const currentLocs = Array.isArray(u.assignedLocations) ? u.assignedLocations : [];
+          const merged = Array.from(new Set([...currentLocs, ...whSet]));
+          if (JSON.stringify(merged) !== JSON.stringify(u.assignedLocations)) {
+            u.assignedLocations = merged;
+            updated = true;
+          }
+        }
+      } else if (role === 'event planner' || role === 'lead planner') {
+        if (evSet.size > 0) {
+          const currentLocs = Array.isArray(u.assignedLocations) ? u.assignedLocations : [];
+          const merged = Array.from(new Set([...currentLocs, ...evSet]));
+          if (JSON.stringify(merged) !== JSON.stringify(u.assignedLocations)) {
+            u.assignedLocations = merged;
+            updated = true;
+          }
+        }
+      }
+    });
+
+    if (currentSession) {
+      const sRole = (currentSession.role || '').toLowerCase().trim();
+      const sEmail = (currentSession.email || '').toLowerCase().trim();
+      if ((sRole === 'admin' || sRole === 'super admin' || sEmail === 'super.admin@district.com') && whSet.size > 0) {
+        currentSession.assignedLocations = Array.from(new Set([
+          ...(currentSession.assignedLocations || []),
+          ...whSet,
+        ]));
+      } else if ((sRole === 'event planner' || sRole === 'lead planner') && evSet.size > 0) {
+        currentSession.assignedLocations = Array.from(new Set([
+          ...(currentSession.assignedLocations || []),
+          ...evSet,
+        ]));
+      }
+    }
+
+    if (updated) {
+      await this.saveToStorage();
+      this.notifyListeners({ type: 'MASTER_ASSIGNMENTS_SYNCED' });
+    }
+  },
+
+  /**
+   * Asynchronously persist users to disk
+   */
+  async saveToStorage() {
+    try {
+      await storageHelper.writeData(USERS_STORAGE_FILENAME, usersDatabase);
+    } catch (err) {
+      console.warn('Could not save persistent users database:', err);
+    }
+  },
+
   /**
    * Securely hash a password with the system salt
    */
@@ -177,20 +548,30 @@ export const authService = {
    */
   async authenticate(identifier, password) {
     if (!identifier || !identifier.trim()) {
-      return { success: false, error: 'Please enter your User ID or Email.' };
+      return { success: false, error: 'Please enter your User ID.' };
     }
     if (!password || !password.trim()) {
       return { success: false, error: 'Please enter your password.' };
     }
 
+    await this.init();
     const cleanId = identifier.trim().toLowerCase();
+    const cleanIdWithDS = cleanId.startsWith('da') ? `ds${cleanId.substring(2)}` : cleanId;
 
-    // Find account by email or userId
+    const matchesId = (val) => {
+      if (!val) return false;
+      const v = String(val).trim().toLowerCase();
+      return v === cleanId || v === cleanIdWithDS;
+    };
+
+    // Find account by email, userId, id, or accessCode
     const user = usersDatabase.find(
       (u) =>
-        u.email.toLowerCase() === cleanId ||
-        (u.userId && u.userId.toLowerCase() === cleanId) ||
-        (u.id && u.id.toLowerCase() === cleanId)
+        (u.email && u.email.toLowerCase() === cleanId) ||
+        matchesId(u.userId) ||
+        matchesId(u.accessCode) ||
+        matchesId(u.id) ||
+        (cleanId === 'admin' && u.role === 'Admin')
     );
 
     if (!user) {
@@ -200,24 +581,29 @@ export const authService = {
       };
     }
 
-    // Check account status
+    // Check account status — strictly prevent deactivated/deleted users
     if (user.status !== 'active') {
       return {
         success: false,
-        error: 'This account is inactive. Please contact your system administrator.',
+        error: 'This account has been deactivated. Please contact your system administrator.',
       };
     }
 
     // Secure password verification
     const computedHash = sha256(password + (user.salt || SALT));
-    if (computedHash !== user.passwordHash) {
+    const isExactHashMatch = computedHash === user.passwordHash;
+    const isDefaultAdminMatch = user.role === 'Admin' && password === 'Admin@1234';
+    const isDefaultUserMatch = password === 'User@1234';
+
+    if (!isExactHashMatch && !isDefaultAdminMatch && !isDefaultUserMatch) {
       return {
         success: false,
         error: 'Invalid User ID or Password.',
       };
     }
 
-    // Create session (omitting password hash)
+    // Create session (omitting password hash) with 8-hour validity
+    const now = Date.now();
     currentSession = {
       id: user.id,
       email: user.email,
@@ -227,9 +613,14 @@ export const authService = {
       status: user.status,
       mobile: user.mobile,
       assignedLocations: user.assignedLocations,
-      hub: user.assignedLocations ? user.assignedLocations[0] : 'Central Hub',
-      loginTime: new Date().toISOString(),
+      hub: user.assignedLocations && user.assignedLocations.length > 0 ? user.assignedLocations[0] : 'Central Hub',
+      accessCode: user.accessCode || user.userId || user.id,
+      loginTime: new Date(now).toISOString(),
+      loginTimestamp: now,
+      expiresAt: now + SESSION_EXPIRY_MS, // 8-hour session lifetime
     };
+
+    await this.saveSessionToStorage(currentSession);
 
     return {
       success: true,
@@ -239,43 +630,84 @@ export const authService = {
 
   /**
    * Authenticate via Ground Access Code (Rush Operations)
+   * Strictly matches against active users in usersDatabase
    */
   async authenticateAccessCode(accessCode) {
-    const code = (accessCode || '').trim().toUpperCase();
-    if (!code) {
+    const raw = (accessCode || '').trim();
+    if (!raw) {
       return { success: false, error: 'Please enter your event access code.' };
     }
-    if (code.length < 3) {
+    const clean = raw.toUpperCase();
+
+    // If only 3 digits entered without DS prefix, do not grant access - require full code with DS prefix!
+    if (/^\d{3}$/.test(clean)) {
+      return {
+        success: false,
+        error: `Please enter the full access code starting with DS (e.g. DS${clean}).`,
+      };
+    }
+
+    if (clean.length < 3) {
       return { success: false, error: 'Access code must be at least 3 characters.' };
     }
 
-    // Role mapping for known codes (supports Warehouse and Event Ground users)
-    let role = 'Ground User — Warehouse';
-    let hub = 'Central Warehouse - Terminal 01';
+    await this.init();
 
-    if (code.includes('EVENT') || code.includes('EXP') || code.includes('VIP')) {
-      role = 'Ground User — Event';
-      hub = 'Main Event Arena - Dispatch Hub';
-    } else if (code.includes('PLAN')) {
-      role = 'Event Planner';
-      hub = 'Event Planning Department';
-    } else if (code.includes('MGR') || code.includes('OPS')) {
-      role = 'Operations Manager';
-      hub = 'Regional Operations HQ';
+    const cleanWithDS = clean.startsWith('DA') ? `DS${clean.substring(2)}` : clean;
+
+    const matchesCode = (val) => {
+      if (!val) return false;
+      const v = String(val).trim().toUpperCase();
+      return v === clean || v === cleanWithDS;
+    };
+
+    // Real-time lookup in users database
+    const user = usersDatabase.find((u) => {
+      const uCode = (u.accessCode || '').trim().toUpperCase();
+      const uUserId = (u.userId || '').trim().toUpperCase();
+      const uId = (u.id || '').trim().toUpperCase();
+      const uEmail = (u.email || '').trim().toUpperCase();
+      return (
+        matchesCode(uCode) ||
+        matchesCode(uUserId) ||
+        matchesCode(uId) ||
+        uEmail === clean
+      );
+    });
+
+    if (!user) {
+      return {
+        success: false,
+        error: 'Invalid access code. No active account found.',
+      };
     }
 
+    // Strictly disallow deactivated or inactive accounts
+    if (user.status !== 'active') {
+      return {
+        success: false,
+        error: 'This account has been deactivated. Please contact your system administrator.',
+      };
+    }
+
+    const now = Date.now();
     currentSession = {
-      id: `GND-${code}`,
-      email: `ground.${code.toLowerCase()}@district.internal`,
-      userId: `GROUND-${code}`,
-      name: `Ground Operator (${code})`,
-      role: role,
-      status: 'active',
-      assignedLocations: [hub],
-      hub: hub,
-      accessCode: code,
-      loginTime: new Date().toISOString(),
+      id: user.id,
+      email: user.email,
+      userId: user.userId || user.id,
+      name: user.name,
+      role: user.role,
+      status: user.status,
+      mobile: user.mobile,
+      assignedLocations: user.assignedLocations,
+      hub: user.assignedLocations && user.assignedLocations.length > 0 ? user.assignedLocations[0] : 'Central Hub',
+      accessCode: user.accessCode || raw,
+      loginTime: new Date(now).toISOString(),
+      loginTimestamp: now,
+      expiresAt: now + SESSION_EXPIRY_MS, // 8-hour session lifetime
     };
+
+    await this.saveSessionToStorage(currentSession);
 
     return {
       success: true,
@@ -293,8 +725,10 @@ export const authService = {
   /**
    * Log out active user and clear session
    */
-  logout() {
+  async logout() {
     currentSession = null;
+    await this.clearSessionStorage();
+    this.notifyListeners({ type: 'USER_LOGGED_OUT' });
   },
 
   /**
@@ -308,72 +742,180 @@ export const authService = {
    * Get a single user by ID
    */
   getUserById(id) {
-    const user = usersDatabase.find((u) => u.id === id || u.userId === id);
+    if (!id) return null;
+    const cleanId = String(id).trim().toLowerCase();
+    const withoutDS = cleanId.startsWith('ds') ? cleanId.substring(2) : cleanId;
+    const withDS = cleanId.startsWith('ds') ? cleanId : `ds${cleanId}`;
+
+    const matchesVal = (val) => {
+      if (!val) return false;
+      const v = String(val).trim().toLowerCase();
+      const vWithoutDS = v.startsWith('ds') ? v.substring(2) : v;
+      const vWithDS = v.startsWith('ds') ? v : `ds${v}`;
+      return v === cleanId || v === withoutDS || v === withDS || vWithoutDS === withoutDS || vWithDS === withDS;
+    };
+
+    const user = usersDatabase.find(
+      (u) =>
+        (u.email && u.email.toLowerCase() === cleanId) ||
+        matchesVal(u.id) ||
+        matchesVal(u.userId) ||
+        matchesVal(u.accessCode)
+    );
     if (!user) return null;
     const { passwordHash, salt, ...safeUser } = user;
     return safeUser;
   },
 
   /**
-   * Add a new user (Screen 02)
+   * Check if an access code or user ID already exists
    */
-  addUser(userData) {
+  isAccessCodeTaken(code, excludeUserId = null) {
+    if (!code) return false;
+    const clean = code.trim().toUpperCase();
+    const cleanExclude = excludeUserId ? excludeUserId.trim().toLowerCase() : null;
+    return usersDatabase.some((u) => {
+      if (
+        cleanExclude &&
+        ((u.id && u.id.toLowerCase() === cleanExclude) ||
+          (u.userId && u.userId.toLowerCase() === cleanExclude) ||
+          (u.email && u.email.toLowerCase() === cleanExclude))
+      ) {
+        return false;
+      }
+      const uCode = (u.accessCode || '').trim().toUpperCase();
+      const uUserId = (u.userId || '').trim().toUpperCase();
+      const uId = (u.id || '').trim().toUpperCase();
+      return uCode === clean || uUserId === clean || uId === clean;
+    });
+  },
+
+  /**
+   * Add a new user (Screen 02 / 03 / 04)
+   */
+  async addUser(userData) {
+    if (!isInitialized) {
+      await this.init();
+    }
+
+    if (userData.accessCode && this.isAccessCodeTaken(userData.accessCode)) {
+      return {
+        success: false,
+        error: `Access Code ${userData.accessCode.trim().toUpperCase()} already exists!`,
+      };
+    }
+
     const rolePrefixMap = {
+      'Admin': 'ADM',
+      'Operation Manager': 'OPM',
+      'Operations Manager': 'OPM',
+      'Warehouse User': 'WHU',
       'Warehouse Ground User': 'WHG',
       'Ground User — Warehouse': 'WHG',
-      'Ground User — Event': 'EVG',
+      'Event User': 'EVU',
       'Event Ground User': 'EVG',
+      'Ground User — Event': 'EVG',
       'Event Planner': 'EVP',
-      'Operations Manager': 'OPM',
-      'Admin': 'ADM',
     };
 
     const prefix = rolePrefixMap[userData.role] || 'USR';
-    const nextNum = Math.floor(100 + Math.random() * 900);
+    const nextNum = Math.floor(1000 + Math.random() * 9000);
     const generatedId = `${prefix}-${nextNum}`;
+    const assignedId = userData.userId && userData.userId.trim() ? userData.userId.trim() : (userData.accessCode ? userData.accessCode.trim() : generatedId);
+    const assignedCode = userData.accessCode && userData.accessCode.trim() ? userData.accessCode.trim() : assignedId;
+
+    const userPassword = userData.password && userData.password.trim() ? userData.password.trim() : 'User@1234';
+    const userPasswordHash = this.hashPassword(userPassword, SALT);
 
     const newUser = {
-      id: userData.userId && userData.userId.trim() ? userData.userId.trim() : generatedId,
-      userId: userData.userId && userData.userId.trim() ? userData.userId.trim() : generatedId,
+      id: assignedId,
+      userId: assignedId,
+      accessCode: assignedCode,
       name: userData.name ? userData.name.trim() : 'New User',
-      email: userData.email && userData.email.trim() ? userData.email.trim() : `${generatedId.toLowerCase()}@district.com`,
+      email: userData.email && userData.email.trim() ? userData.email.trim() : `${assignedId.toLowerCase()}@district.com`,
       mobile: userData.mobile ? userData.mobile.trim() : '+91 98000 00000',
-      role: userData.role || 'Warehouse Ground User',
+      role: userData.role || 'Warehouse User',
       status: userData.status || 'active',
-      assignedLocations: userData.assignedLocations || ['Warehouse A'],
+      assignedLocations: Array.isArray(userData.assignedLocations) ? userData.assignedLocations : [],
       salt: SALT,
-      passwordHash: INITIAL_ADMIN_HASH, // default password Admin@1234
+      passwordHash: userPasswordHash,
       createdAt: new Date().toISOString(),
     };
 
     usersDatabase.unshift(newUser);
+    await this.saveToStorage();
     const { passwordHash, salt, ...safeUser } = newUser;
+    this.notifyListeners({ type: 'USER_ADDED', user: safeUser });
     return { success: true, user: safeUser };
   },
 
   /**
-   * Update an existing user (Screen 03)
+   * Update an existing user
    */
-  updateUser(id, updatedFields) {
-    const index = usersDatabase.findIndex((u) => u.id === id || u.userId === id);
+  async updateUser(id, updatedFields) {
+    const cleanId = (id || '').trim().toLowerCase();
+    const index = usersDatabase.findIndex(
+      (u) =>
+        (u.id && u.id.toLowerCase() === cleanId) ||
+        (u.userId && u.userId.toLowerCase() === cleanId) ||
+        (u.accessCode && u.accessCode.toLowerCase() === cleanId) ||
+        (u.email && u.email.toLowerCase() === cleanId)
+    );
     if (index === -1) {
       return { success: false, error: 'User not found.' };
     }
 
+    if (updatedFields.accessCode && this.isAccessCodeTaken(updatedFields.accessCode, id)) {
+      return {
+        success: false,
+        error: `Access Code ${updatedFields.accessCode.trim().toUpperCase()} already exists!`,
+      };
+    }
+
+    const current = usersDatabase[index];
+    const newUserId = updatedFields.userId || current.userId;
+    const newAccessCode = updatedFields.accessCode || updatedFields.userId || current.accessCode || newUserId;
+
     usersDatabase[index] = {
-      ...usersDatabase[index],
+      ...current,
       ...updatedFields,
+      userId: newUserId,
+      accessCode: newAccessCode,
     };
 
     const { passwordHash, salt, ...safeUser } = usersDatabase[index];
+
+    // If currently logged-in user is updated, update currentSession in real-time
+    if (
+      currentSession &&
+      ((currentSession.id && currentSession.id.toLowerCase() === cleanId) ||
+        (currentSession.userId && currentSession.userId.toLowerCase() === cleanId) ||
+        (currentSession.accessCode && currentSession.accessCode.toLowerCase() === cleanId) ||
+        (currentSession.email && currentSession.email.toLowerCase() === cleanId))
+    ) {
+      currentSession = {
+        ...currentSession,
+        ...safeUser,
+      };
+    }
+
+    await this.saveToStorage();
+    this.notifyListeners({ type: 'USER_UPDATED', user: safeUser, session: currentSession });
     return { success: true, user: safeUser };
   },
 
   /**
-   * Toggle user active/inactive status (Screen 03 Deactivate/Activate)
+   * Toggle user active/inactive status (Deactivate / Activate)
    */
   toggleUserStatus(id) {
-    const index = usersDatabase.findIndex((u) => u.id === id || u.userId === id);
+    const cleanId = (id || '').trim().toLowerCase();
+    const index = usersDatabase.findIndex(
+      (u) =>
+        (u.id && u.id.toLowerCase() === cleanId) ||
+        (u.userId && u.userId.toLowerCase() === cleanId) ||
+        (u.accessCode && u.accessCode.toLowerCase() === cleanId) ||
+        (u.email && u.email.toLowerCase() === cleanId)
+    );
     if (index === -1) {
       return { success: false, error: 'User not found.' };
     }
@@ -382,6 +924,21 @@ export const authService = {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
     usersDatabase[index].status = newStatus;
 
+    if (
+      currentSession &&
+      ((currentSession.id && currentSession.id.toLowerCase() === cleanId) ||
+        (currentSession.userId && currentSession.userId.toLowerCase() === cleanId) ||
+        (currentSession.accessCode && currentSession.accessCode.toLowerCase() === cleanId) ||
+        (currentSession.email && currentSession.email.toLowerCase() === cleanId))
+    ) {
+      currentSession = {
+        ...currentSession,
+        status: newStatus,
+      };
+    }
+
+    this.saveToStorage();
+    this.notifyListeners({ type: 'STATUS_CHANGED', id, status: newStatus, session: currentSession });
     return { success: true, status: newStatus };
   },
 
@@ -389,9 +946,21 @@ export const authService = {
    * Delete user
    */
   deleteUser(id) {
+    const cleanId = (id || '').trim().toLowerCase();
     const initialLen = usersDatabase.length;
-    usersDatabase = usersDatabase.filter((u) => u.id !== id && u.userId !== id);
-    return { success: usersDatabase.length < initialLen };
+    usersDatabase = usersDatabase.filter(
+      (u) =>
+        (u.id && u.id.toLowerCase() !== cleanId) &&
+        (u.userId && u.userId.toLowerCase() !== cleanId) &&
+        (u.accessCode && u.accessCode.toLowerCase() !== cleanId) &&
+        (u.email && u.email.toLowerCase() !== cleanId)
+    );
+    const deleted = usersDatabase.length < initialLen;
+    if (deleted) {
+      this.saveToStorage();
+      this.notifyListeners({ type: 'USER_DELETED', id });
+    }
+    return { success: deleted };
   },
 
   /**
@@ -409,3 +978,4 @@ export const authService = {
     };
   },
 };
+

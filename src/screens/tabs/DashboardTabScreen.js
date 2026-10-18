@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,234 +7,35 @@ import {
   TouchableOpacity,
   Platform,
   TextInput,
+  Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS } from '../../theme/colors';
-import { masterService } from '../../services/masterService';
+import masterService from '../../services/masterService';
+import { authService } from '../../services/authService';
 import TablePagination from '../../components/TablePagination';
+import DistrictTopHeader from '../../components/DistrictTopHeader';
+import {
+  getUserAccessibleWarehouses,
+  getUserAccessibleEvents,
+} from '../../services/locationScopeHelper';
 
-// --- DEFAULT INVENTORY DATASETS (TABLES) ---
-const DEFAULT_PRODUCT_INVENTORY = [
-  {
-    id: 'PRD-001',
-    name: 'Item 22',
-    sku: 'TEST',
-    uom: 'Pcs',
-    availableQty: 450,
-    reservedQty: 50,
-    damageQty: 12,
-    totalAvailableQty: 388,
-    value: '₹6,75,000',
-    category: 'Electronics',
-  },
-  {
-    id: 'PRD-002',
-    name: 'Portable Speaker',
-    sku: 'AUD-002',
-    uom: 'Pcs',
-    availableQty: 38,
-    reservedQty: 10,
-    damageQty: 2,
-    totalAvailableQty: 26,
-    value: '₹1,59,600',
-    category: 'Sound & Audio',
-  },
-  {
-    id: 'PRD-003',
-    name: 'Event Banner',
-    sku: 'BRD-008',
-    uom: 'Pcs',
-    availableQty: 120,
-    reservedQty: 30,
-    damageQty: 5,
-    totalAvailableQty: 85,
-    value: '₹1,02,000',
-    category: 'Event Branding',
-  },
-  {
-    id: 'PRD-004',
-    name: 'Folding VIP Chair',
-    sku: 'FUR-019',
-    uom: 'Pcs',
-    availableQty: 320,
-    reservedQty: 80,
-    damageQty: 8,
-    totalAvailableQty: 232,
-    value: '₹3,84,000',
-    category: 'Furniture',
-  },
-  {
-    id: 'PRD-005',
-    name: 'LED Spotlight 200W',
-    sku: 'LGT-004',
-    uom: 'Pcs',
-    availableQty: 64,
-    reservedQty: 14,
-    damageQty: 3,
-    totalAvailableQty: 47,
-    value: '₹1,98,400',
-    category: 'Lighting & Truss',
-  },
-  {
-    id: 'PRD-006',
-    name: 'Wireless Mic Set',
-    sku: 'AUD-010',
-    uom: 'Set',
-    availableQty: 25,
-    reservedQty: 5,
-    damageQty: 1,
-    totalAvailableQty: 19,
-    value: '₹1,37,500',
-    category: 'Sound & Audio',
-  },
-  {
-    id: 'PRD-007',
-    name: 'Stage Barrier Heavy',
-    sku: 'STG-003',
-    uom: 'Mtr',
-    availableQty: 85,
-    reservedQty: 25,
-    damageQty: 4,
-    totalAvailableQty: 56,
-    value: '₹2,12,500',
-    category: 'Stage & Truss',
-  },
-  {
-    id: 'PRD-008',
-    name: 'Heavy Cable 50M',
-    sku: 'CBL-001',
-    uom: 'Pcs',
-    availableQty: 110,
-    reservedQty: 20,
-    damageQty: 6,
-    totalAvailableQty: 84,
-    value: '₹1,65,000',
-    category: 'Electronics',
-  },
-];
-
-const DEFAULT_INBOUND_OUTBOUND = [
-  {
-    id: 'IO-001',
-    dateTime: '10 Oct, 01:45 PM',
-    type: 'Inbound',
-    productName: 'Portable Speaker (AUD-002)',
-    qty: '+20 Pcs',
-    doneBy: 'Rahul Kumar',
-  },
-  {
-    id: 'IO-002',
-    dateTime: '10 Oct, 12:30 PM',
-    type: 'Outbound',
-    productName: 'Folding VIP Chair (FUR-019)',
-    qty: '-50 Pcs',
-    doneBy: 'Amit More',
-  },
-  {
-    id: 'IO-003',
-    dateTime: '10 Oct, 11:15 AM',
-    type: 'Inbound',
-    productName: 'LED Spotlight 200W (LGT-004)',
-    qty: '+15 Pcs',
-    doneBy: 'Sneha Patil',
-  },
-  {
-    id: 'IO-004',
-    dateTime: '09 Oct, 05:20 PM',
-    type: 'Outbound',
-    productName: 'Item 22 (TEST)',
-    qty: '-40 Pcs',
-    doneBy: 'Vikram Singh',
-  },
-  {
-    id: 'IO-005',
-    dateTime: '09 Oct, 03:40 PM',
-    type: 'Inbound',
-    productName: 'Event Banner (BRD-008)',
-    qty: '+30 Pcs',
-    doneBy: 'Pooja Sharma',
-  },
-  {
-    id: 'IO-006',
-    dateTime: '09 Oct, 01:10 PM',
-    type: 'Outbound',
-    productName: 'Wireless Mic Set (AUD-010)',
-    qty: '-8 Sets',
-    doneBy: 'Rahul Kumar',
-  },
-  {
-    id: 'IO-007',
-    dateTime: '08 Oct, 04:30 PM',
-    type: 'Inbound',
-    productName: 'Stage Barrier Heavy (STG-003)',
-    qty: '+25 Mtr',
-    doneBy: 'Amit More',
-  },
-  {
-    id: 'IO-008',
-    dateTime: '08 Oct, 10:00 AM',
-    type: 'Outbound',
-    productName: 'Heavy Cable 50M (CBL-001)',
-    qty: '-15 Pcs',
-    doneBy: 'Vikram Singh',
-  },
-];
-
-const DEFAULT_DAMAGED_PRODUCTS = [
-  {
-    id: 'DMG-001',
-    productName: 'Portable Speaker (AUD-002)',
-    qty: '2 Pcs',
-    damagedBy: 'Rahul Kumar · Transit dent on front grill',
-  },
-  {
-    id: 'DMG-002',
-    productName: 'Folding VIP Chair (FUR-019)',
-    qty: '8 Pcs',
-    damagedBy: 'Amit More · Leg hinge bent during load',
-  },
-  {
-    id: 'DMG-003',
-    productName: 'LED Spotlight 200W (LGT-004)',
-    qty: '3 Pcs',
-    damagedBy: 'Vikram Singh · Lens cracked during unloading',
-  },
-  {
-    id: 'DMG-004',
-    productName: 'Event Banner (BRD-008)',
-    qty: '5 Pcs',
-    damagedBy: 'Pooja Sharma · Vinyl tear in heavy wind',
-  },
-  {
-    id: 'DMG-005',
-    productName: 'Stage Barrier Heavy (STG-003)',
-    qty: '4 Mtr',
-    damagedBy: 'Ground Crew · Lock latch snapped',
-  },
-  {
-    id: 'DMG-006',
-    productName: 'Heavy Cable 50M (CBL-001)',
-    qty: '6 Pcs',
-    damagedBy: 'Sneha Patil · Connector insulation sliced',
-  },
-  {
-    id: 'DMG-007',
-    productName: 'Item 22 (TEST)',
-    qty: '12 Pcs',
-    damagedBy: 'Ravi Verma · Housing cracked during staging',
-  },
-];
-
-export default function DashboardTabScreen({ session, onLogout, onNavigateTab }) {
+export default function DashboardTabScreen({ session, onLogout, onNavigateTab, onSelectWarehouse }) {
   const roleName = session?.role || 'Admin';
 
   // Normalize role
   const normalizedRole = roleName.toLowerCase().trim();
   const isAdmin = normalizedRole.includes('admin');
-  const isOpsManager = normalizedRole.includes('operations');
-  const isWarehouseGround = normalizedRole.includes('warehouse') && normalizedRole.includes('ground');
-  const isEventGround = normalizedRole.includes('event') && normalizedRole.includes('ground');
+  const isOpsManager = normalizedRole.includes('operations') || normalizedRole.includes('operation');
+  const isWarehouseGround =
+    (normalizedRole.includes('warehouse') && (normalizedRole.includes('ground') || normalizedRole.includes('user'))) ||
+    normalizedRole === 'warehouse user' ||
+    normalizedRole === 'warehouse ground';
+  const isEventGround =
+    (normalizedRole.includes('event') && (normalizedRole.includes('ground') || normalizedRole.includes('user'))) ||
+    normalizedRole === 'event user' ||
+    normalizedRole === 'event ground';
   const isEventPlanner = normalizedRole.includes('planner');
 
   // Subtitle scope label matching SVG
@@ -245,17 +46,17 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
 
   if (isOpsManager) {
     scopeLabel = 'Assigned warehouse only';
-    roleBadgeText = 'OPERATIONS MANAGER';
+    roleBadgeText = 'OPERATION MANAGER';
     badgeStyle = styles.roleBadgeOps;
     badgeTextStyle = styles.roleBadgeTextOps;
   } else if (isWarehouseGround) {
     scopeLabel = 'Assigned warehouse only';
-    roleBadgeText = 'WAREHOUSE GROUND';
+    roleBadgeText = 'WAREHOUSE USER';
     badgeStyle = styles.roleBadgeGround;
     badgeTextStyle = styles.roleBadgeTextGround;
   } else if (isEventGround) {
     scopeLabel = 'Assigned event only';
-    roleBadgeText = 'EVENT GROUND';
+    roleBadgeText = 'EVENT USER';
     badgeStyle = styles.roleBadgeGround;
     badgeTextStyle = styles.roleBadgeTextGround;
   } else if (isEventPlanner) {
@@ -275,75 +76,178 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
   // Task filter for Ground / Planner
   const [taskFilter, setTaskFilter] = useState('all'); // 'all' | 'pending' | 'in_progress' | 'completed'
 
-  // Dynamic Product Inventory: merged with masterService products
-  const masterProducts = (masterService && typeof masterService.getProducts === 'function')
-    ? masterService.getProducts()
+  // --- REAL-TIME LIVE USER STATE (SYNCS ON USER SETUP EDITS INSTANTLY) ---
+  const [liveUser, setLiveUser] = useState(() => {
+    const sid = session?.id || session?.userId || session?.email;
+    return sid && authService.getUserById ? authService.getUserById(sid) : null;
+  });
+
+  useEffect(() => {
+    if (!authService.subscribe) return;
+    const unsubscribe = authService.subscribe((event) => {
+      if (event?.type === 'SELECTED_WAREHOUSE_CHANGED') return;
+      const sid = session?.id || session?.userId || session?.email;
+      if (sid && authService.getUserById) {
+        const u = authService.getUserById(sid);
+        if (u) {
+          setLiveUser(u);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [session]);
+
+  const [, setMasterRevision] = useState(0);
+  useEffect(() => {
+    if (!masterService?.subscribe) return;
+    const unsubscribe = masterService.subscribe(() => {
+      setMasterRevision((r) => r + 1);
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
+
+  const activeUser = liveUser || session;
+  const rawAssigned = Array.isArray(activeUser?.assignedLocations)
+    ? activeUser.assignedLocations
+    : activeUser?.assignedLocations
+    ? [activeUser.assignedLocations]
     : [];
-  const productInventoryList = [...DEFAULT_PRODUCT_INVENTORY];
-  masterProducts.forEach((mp) => {
-    if (
-      !productInventoryList.some(
-        (p) =>
-          p.name.toLowerCase() === mp.name.toLowerCase() ||
-          p.sku.toUpperCase() === (mp.sku || '').toUpperCase()
-      )
-    ) {
-      const avail = 50;
-      const res = 5;
-      const dmg = 0;
-      const tot = avail - res - dmg;
-      const val = (mp.unitPrice || 1200) * avail;
-      productInventoryList.push({
-        id: mp.id,
-        name: mp.name,
-        sku: mp.sku || 'SKU',
-        uom: mp.uom?.includes('Pcs') ? 'Pcs' : mp.uom || 'Pcs',
-        availableQty: avail,
-        reservedQty: res,
-        damageQty: dmg,
-        totalAvailableQty: tot,
-        value: `₹${val.toLocaleString('en-IN')}`,
-        category: mp.category,
-      });
+
+  const masterWarehouses = (masterService.getWarehouses && masterService.getWarehouses()) || [];
+  const masterEvents = (masterService.getEvents && masterService.getEvents()) || [];
+  const masterWhNames = masterWarehouses.map((w) => w.name);
+  const masterEvNames = masterEvents.map((e) => e.name);
+
+  const isEventLoc = (loc) => {
+    if (!loc) return false;
+    const l = loc.toLowerCase().trim();
+    return (
+      masterEvNames.some((e) => e.toLowerCase() === l) ||
+      l.includes('event') ||
+      l.includes('arena') ||
+      l.includes('summit') ||
+      l.includes('fest') ||
+      l.includes('expo')
+    );
+  };
+
+  const isWarehouseLoc = (loc) => {
+    if (!loc) return false;
+    const l = loc.toLowerCase().trim();
+    return (
+      masterWhNames.some((w) => w.toLowerCase() === l) ||
+      l.includes('warehouse') ||
+      l.includes('wh') ||
+      l.includes('hub') ||
+      l.includes('depot') ||
+      l.includes('storage') ||
+      l.includes('terminal')
+    );
+  };
+
+  const userAssignedWarehouses = getUserAccessibleWarehouses(activeUser);
+  const userAssignedEvents = getUserAccessibleEvents(activeUser);
+
+  const hasWarehouses = userAssignedWarehouses.length > 0;
+  const hasEvents = userAssignedEvents.length > 0;
+
+  // Initial active scope: warehouse | event | none
+  const defaultScope =
+    hasWarehouses && !hasEvents
+      ? 'warehouse'
+      : !hasWarehouses && hasEvents
+      ? 'event'
+      : isEventPlanner || isEventGround
+      ? 'event'
+      : 'warehouse';
+
+  const [activeScope, setActiveScope] = useState(defaultScope);
+  const [selectedWarehouse, setSelectedWarehouse] = useState(() => {
+    return userAssignedWarehouses.length === 1 ? userAssignedWarehouses[0] : 'ALL';
+  });
+  const [selectedEvent, setSelectedEvent] = useState(() => {
+    return userAssignedEvents.length === 1 ? userAssignedEvents[0] : 'ALL';
+  });
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
+
+  const assignedWhKey = userAssignedWarehouses.join('|');
+  const assignedEvKey = userAssignedEvents.join('|');
+
+  useEffect(() => {
+    if (hasWarehouses && !hasEvents) {
+      setActiveScope('warehouse');
+    } else if (!hasWarehouses && hasEvents) {
+      setActiveScope('event');
+    } else if (!hasWarehouses && !hasEvents) {
+      setActiveScope('warehouse');
     }
-  });
 
-  const filteredProductInventory = productInventoryList.filter((item) => {
-    if (!invSearchQuery.trim()) return true;
-    const q = invSearchQuery.toLowerCase();
-    return (
-      item.name.toLowerCase().includes(q) ||
-      item.sku.toLowerCase().includes(q) ||
-      (item.category && item.category.toLowerCase().includes(q))
-    );
-  });
+    if (userAssignedWarehouses.length === 1) {
+      setSelectedWarehouse(userAssignedWarehouses[0]);
+    } else if (selectedWarehouse !== 'ALL' && !userAssignedWarehouses.includes(selectedWarehouse)) {
+      setSelectedWarehouse('ALL');
+    }
 
-  const filteredInboundOutbound = DEFAULT_INBOUND_OUTBOUND.filter((item) => {
-    if (!invSearchQuery.trim()) return true;
-    const q = invSearchQuery.toLowerCase();
-    return (
-      item.productName.toLowerCase().includes(q) ||
-      item.type.toLowerCase().includes(q) ||
-      item.doneBy.toLowerCase().includes(q) ||
-      item.dateTime.toLowerCase().includes(q)
-    );
-  });
+    if (userAssignedEvents.length === 1) {
+      setSelectedEvent(userAssignedEvents[0]);
+    } else if (selectedEvent !== 'ALL' && !userAssignedEvents.includes(selectedEvent)) {
+      setSelectedEvent('ALL');
+    }
+  }, [hasWarehouses, hasEvents, assignedWhKey, assignedEvKey]);
 
-  const filteredDamagedProducts = DEFAULT_DAMAGED_PRODUCTS.filter((item) => {
-    if (!invSearchQuery.trim()) return true;
-    const q = invSearchQuery.toLowerCase();
-    return (
-      item.productName.toLowerCase().includes(q) ||
-      item.damagedBy.toLowerCase().includes(q) ||
-      item.qty.toLowerCase().includes(q)
-    );
-  });
+  useEffect(() => {
+    if (selectedWarehouse && selectedWarehouse !== 'ALL') {
+      authService.setSelectedWarehouse(selectedWarehouse);
+    } else if (selectedWarehouse === 'ALL' && userAssignedWarehouses.length > 0) {
+      authService.setSelectedWarehouse(userAssignedWarehouses[0]);
+    }
+  }, [selectedWarehouse, assignedWhKey]);
+
+  const currentAssignedList = activeScope === 'warehouse' ? userAssignedWarehouses : userAssignedEvents;
+  const selectedLocation = activeScope === 'warehouse' ? selectedWarehouse : selectedEvent;
+
+  const setSelectedLocation = (loc) => {
+    if (activeScope === 'warehouse') {
+      setSelectedWarehouse(loc);
+      if (loc !== 'ALL') {
+        authService.setSelectedWarehouse(loc);
+      } else if (userAssignedWarehouses.length > 0) {
+        authService.setSelectedWarehouse(userAssignedWarehouses[0]);
+      }
+    } else {
+      setSelectedEvent(loc);
+    }
+  };
+
+  const hasLocationsForScope = currentAssignedList.length > 0;
+  const currentLocationLabel =
+    selectedLocation === 'ALL'
+      ? activeScope === 'warehouse'
+        ? `All Warehouses (${currentAssignedList.length})`
+        : `All Events (${currentAssignedList.length})`
+      : selectedLocation;
+
+  // --- CLEAN SLATE / ALL DATA NULL (USER WILL MANUALLY POPULATE LATER) ---
+  const pendingReqCount = 0;
+  const inProgressReqCount = 0;
+  const completedReqCount = 0;
+  const activeEventsCount = 0;
+  const lowStockCount = 0;
+
+  // Empty datasets (no auto-populated dummy inventory)
+  const productInventoryList = [];
+  const filteredProductInventory = [];
+  const filteredInboundOutbound = [];
+  const filteredDamagedProducts = [];
 
   // 10-Row Table Pagination
   const [invPage, setInvPage] = useState(1);
   const INV_PER_PAGE = 10;
 
-  React.useEffect(() => {
+  useEffect(() => {
     setInvPage(1);
   }, [invSearchQuery, inventoryTab]);
 
@@ -362,45 +266,329 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
 
   return (
     <View style={styles.container}>
-      {/* ========================================================= */}
-      {/* 1. TOP NAVY HEADER WITH ROLE BADGE & SCOPE                */}
-      {/* ========================================================= */}
-      <View style={styles.navyHeader}>
-        <View style={styles.headerTopRow}>
-          <View style={styles.brandRow}>
-            {/* Square 3D brand logo box */}
-            <View style={styles.brandIconBox}>
-              <Text style={styles.brandIconTextTop}>DIST</Text>
-              <Text style={styles.brandIconTextBot}>STOCK</Text>
-            </View>
-
-            <View style={styles.brandTextCol}>
-              <Text style={styles.brandTitle}>DISTRICT STOCK</Text>
-              <View style={[styles.roleBadge, badgeStyle]}>
-                <Text style={[styles.roleBadgeText, badgeTextStyle]}>{roleBadgeText}</Text>
-              </View>
-            </View>
-          </View>
-
-          {onLogout && (
-            <TouchableOpacity onPress={onLogout} style={styles.logoutBtn} activeOpacity={0.75}>
-              <Ionicons name="log-out-outline" size={14} color="#D8B4FE" />
-              <Text style={styles.logoutBtnText}>Logout</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
+      {/* 1. DASHBOARD SUB-HEADER BANNER (ON WHITE PART UNDER TOP BLUE HEADER) */}
+      <View style={styles.whiteDashboardHeader}>
         <Text style={styles.headerDashboardTitle}>Dashboard</Text>
-        <View style={styles.scopeRow}>
-          <View style={styles.scopeDot} />
-          <Text style={styles.headerScopeSubtitle}>
-            {scopeLabel}
-            {session?.assignedLocations?.length
-              ? ` · ${session.assignedLocations.join(' · ')}`
-              : ''}
-          </Text>
-        </View>
+
+        {/* UNIFIED DYNAMIC SCOPE & LOCATION DROPDOWN BAR ON WHITE BACKGROUND */}
+        {hasWarehouses && hasEvents ? (
+          // BOTH ASSIGNED: Automatically split into 2 equal parts side-by-side
+          <View style={styles.splitDropdownRow}>
+            {/* Left Part: Warehouse Dropdown */}
+            <TouchableOpacity
+              style={[
+                styles.splitDropdownBtn,
+                activeScope === 'warehouse'
+                  ? styles.splitDropdownBtnActiveWh
+                  : styles.splitDropdownBtnInactive,
+              ]}
+              activeOpacity={0.8}
+              onPress={() => {
+                setActiveScope('warehouse');
+                setIsLocationPickerOpen(true);
+              }}
+            >
+              <MaterialCommunityIcons
+                name="office-building"
+                size={14}
+                color={activeScope === 'warehouse' ? '#8235F4' : '#706584'}
+                style={{ marginRight: 6 }}
+              />
+              <View style={styles.splitDropdownTextWrap}>
+                <Text
+                  style={[
+                    styles.splitDropdownPrefix,
+                    activeScope === 'warehouse' && styles.splitDropdownPrefixActiveWh,
+                  ]}
+                  numberOfLines={1}
+                >
+                  Warehouse:
+                </Text>
+                <Text
+                  style={[
+                    styles.splitDropdownValue,
+                    activeScope === 'warehouse' && styles.splitDropdownValueActiveWh,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {selectedWarehouse === 'ALL'
+                    ? userAssignedWarehouses.length > 1
+                      ? `All (${userAssignedWarehouses.length})`
+                      : userAssignedWarehouses[0] || 'All'
+                    : selectedWarehouse}
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-down"
+                size={13}
+                color={activeScope === 'warehouse' ? '#8235F4' : '#706584'}
+                style={{ marginLeft: 3 }}
+              />
+            </TouchableOpacity>
+
+            {/* Right Part: Event Dropdown */}
+            <TouchableOpacity
+              style={[
+                styles.splitDropdownBtn,
+                activeScope === 'event'
+                  ? styles.splitDropdownBtnActiveEv
+                  : styles.splitDropdownBtnInactive,
+              ]}
+              activeOpacity={0.8}
+              onPress={() => {
+                setActiveScope('event');
+                setIsLocationPickerOpen(true);
+              }}
+            >
+              <MaterialCommunityIcons
+                name="calendar-star"
+                size={14}
+                color={activeScope === 'event' ? '#4F46E5' : '#706584'}
+                style={{ marginRight: 6 }}
+              />
+              <View style={styles.splitDropdownTextWrap}>
+                <Text
+                  style={[
+                    styles.splitDropdownPrefix,
+                    activeScope === 'event' && styles.splitDropdownPrefixActiveEv,
+                  ]}
+                  numberOfLines={1}
+                >
+                  Event:
+                </Text>
+                <Text
+                  style={[
+                    styles.splitDropdownValue,
+                    activeScope === 'event' && styles.splitDropdownValueActiveEv,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {selectedEvent === 'ALL'
+                    ? userAssignedEvents.length > 1
+                      ? `All (${userAssignedEvents.length})`
+                      : userAssignedEvents[0] || 'All'
+                    : selectedEvent}
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-down"
+                size={13}
+                color={activeScope === 'event' ? '#4F46E5' : '#706584'}
+                style={{ marginLeft: 3 }}
+              />
+            </TouchableOpacity>
+          </View>
+        ) : hasWarehouses && !hasEvents ? (
+          // ONLY WAREHOUSES ASSIGNED: Full width single Warehouse dropdown (no split)
+          <TouchableOpacity
+            style={styles.singleFullDropdownBar}
+            activeOpacity={0.8}
+            onPress={() => {
+              setActiveScope('warehouse');
+              setIsLocationPickerOpen(true);
+            }}
+          >
+            <MaterialCommunityIcons
+              name="office-building"
+              size={15}
+              color="#8235F4"
+              style={{ marginRight: 8 }}
+            />
+            <Text style={styles.singleFullDropdownPrefix}>Warehouse:</Text>
+            <Text style={styles.singleFullDropdownValue} numberOfLines={1}>
+              {selectedWarehouse === 'ALL'
+                ? userAssignedWarehouses.length > 1
+                  ? `All Warehouses (${userAssignedWarehouses.length})`
+                  : userAssignedWarehouses[0] || 'All Warehouses'
+                : selectedWarehouse}
+            </Text>
+            {userAssignedWarehouses.length > 1 && (
+              <View style={styles.singleFullCountBadge}>
+                <Text style={styles.singleFullCountText}>
+                  {userAssignedWarehouses.length} assigned
+                </Text>
+              </View>
+            )}
+            <Ionicons name="chevron-down" size={14} color="#8235F4" style={{ marginLeft: 4 }} />
+          </TouchableOpacity>
+        ) : !hasWarehouses && hasEvents ? (
+          // ONLY EVENTS ASSIGNED: Full width single Event dropdown (no split)
+          <TouchableOpacity
+            style={styles.singleFullDropdownBar}
+            activeOpacity={0.8}
+            onPress={() => {
+              setActiveScope('event');
+              setIsLocationPickerOpen(true);
+            }}
+          >
+            <MaterialCommunityIcons
+              name="calendar-star"
+              size={15}
+              color="#4F46E5"
+              style={{ marginRight: 8 }}
+            />
+            <Text style={styles.singleFullDropdownPrefix}>Event:</Text>
+            <Text style={styles.singleFullDropdownValue} numberOfLines={1}>
+              {selectedEvent === 'ALL'
+                ? userAssignedEvents.length > 1
+                  ? `All Events (${userAssignedEvents.length})`
+                  : userAssignedEvents[0] || 'All Events'
+                : selectedEvent}
+            </Text>
+            {userAssignedEvents.length > 1 && (
+              <View style={styles.singleFullCountBadge}>
+                <Text style={styles.singleFullCountText}>
+                  {userAssignedEvents.length} assigned
+                </Text>
+              </View>
+            )}
+            <Ionicons name="chevron-down" size={14} color="#4F46E5" style={{ marginLeft: 4 }} />
+          </TouchableOpacity>
+        ) : (
+          // NEITHER ASSIGNED: Full width Warehouse dropdown, but Null
+          <TouchableOpacity
+            style={styles.unassignedFullDropdownBar}
+            activeOpacity={0.8}
+            onPress={() => {
+              Alert.alert(
+                'No Warehouse Assigned',
+                'No warehouse or event has been assigned to your account. Please contact an Administrator.'
+              );
+            }}
+          >
+            <MaterialCommunityIcons
+              name="office-building-outline"
+              size={15}
+              color="#DC2626"
+              style={{ marginRight: 8 }}
+            />
+            <Text style={styles.unassignedFullPrefix}>Warehouse:</Text>
+            <Text style={styles.unassignedFullValue} numberOfLines={1}>
+              None Assigned (Null)
+            </Text>
+            <View style={styles.unassignedBadge}>
+              <Text style={styles.unassignedBadgeText}>Null</Text>
+            </View>
+            <Ionicons name="chevron-down" size={14} color="#DC2626" style={{ marginLeft: 4 }} />
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* LOCATION PICKER MODAL (DROPDOWN) */}
+      <Modal
+        visible={isLocationPickerOpen}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setIsLocationPickerOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsLocationPickerOpen(false)}
+        >
+          <View style={styles.locationDropdownModalCard}>
+            <View style={styles.modalHeaderRow}>
+              <View>
+                <Text style={styles.modalHeaderTitle}>
+                  Select {activeScope === 'warehouse' ? 'Warehouse' : 'Event'}
+                </Text>
+                <Text style={styles.modalHeaderSubtitle}>
+                  Locations assigned to your account
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setIsLocationPickerOpen(false)}
+              >
+                <Ionicons name="close" size={18} color="#77718B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
+              {/* Option 1: ALL (Rendered ONLY if user has more than 1 assigned location) */}
+              {currentAssignedList.length > 1 && (
+                <TouchableOpacity
+                  style={[
+                    styles.locationOptionRow,
+                    selectedLocation === 'ALL' && styles.locationOptionRowActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedLocation('ALL');
+                    setIsLocationPickerOpen(false);
+                  }}
+                >
+                  <View style={styles.locationOptionLeft}>
+                    <MaterialCommunityIcons
+                      name="view-grid-outline"
+                      size={16}
+                      color={selectedLocation === 'ALL' ? '#8235F4' : '#77718B'}
+                      style={{ marginRight: 8 }}
+                    />
+                    <View>
+                      <Text
+                        style={[
+                          styles.locationOptionTitle,
+                          selectedLocation === 'ALL' && styles.locationOptionTitleActive,
+                        ]}
+                      >
+                        All {activeScope === 'warehouse' ? 'Warehouses' : 'Events'}
+                      </Text>
+                      <Text style={styles.locationOptionDesc}>
+                        Aggregates all {currentAssignedList.length} assigned locations
+                      </Text>
+                    </View>
+                  </View>
+                  {selectedLocation === 'ALL' && (
+                    <Ionicons name="checkmark-circle" size={18} color="#8235F4" />
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {/* Options for each individual assigned location */}
+              {currentAssignedList.map((loc) => {
+                const isSelected = selectedLocation === loc;
+                return (
+                  <TouchableOpacity
+                    key={loc}
+                    style={[
+                      styles.locationOptionRow,
+                      isSelected && styles.locationOptionRowActive,
+                    ]}
+                    onPress={() => {
+                      setSelectedLocation(loc);
+                      setIsLocationPickerOpen(false);
+                    }}
+                  >
+                    <View style={styles.locationOptionLeft}>
+                      <MaterialCommunityIcons
+                        name={
+                          activeScope === 'warehouse'
+                            ? 'office-building-marker-outline'
+                            : 'cube-outline'
+                        }
+                        size={16}
+                        color={isSelected ? '#8235F4' : '#77718B'}
+                        style={{ marginRight: 8 }}
+                      />
+                      <Text
+                        style={[
+                          styles.locationOptionTitle,
+                          isSelected && styles.locationOptionTitleActive,
+                        ]}
+                      >
+                        {loc}
+                      </Text>
+                    </View>
+                    {isSelected && (
+                      <Ionicons name="checkmark-circle" size={18} color="#8235F4" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ========================================================= */}
       {/* 2. SCROLLABLE DASHBOARD CONTENT (ROLE-SPECIFIC)           */}
@@ -408,6 +596,8 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled={true}
       >
         {/* --------------------------------------------------------- */}
         {/* CASE A: ADMIN & OPERATIONS MANAGER DASHBOARDS             */}
@@ -428,7 +618,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                   <Text style={styles.kpiLabel}>PENDING REQUESTS</Text>
                   <MaterialCommunityIcons name="clipboard-clock-outline" size={16} color="#8235F4" />
                 </View>
-                <Text style={styles.kpiValue}>14</Text>
+                <Text style={styles.kpiValue}>{pendingReqCount}</Text>
                 <Text style={styles.kpiSub}>Awaiting review</Text>
               </View>
 
@@ -442,7 +632,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                   <Text style={styles.kpiLabel}>ACTIVE EVENTS</Text>
                   <MaterialCommunityIcons name="calendar-check-outline" size={16} color="#0284C7" />
                 </View>
-                <Text style={styles.kpiValue}>3</Text>
+                <Text style={styles.kpiValue}>{activeEventsCount}</Text>
                 <Text style={styles.kpiSub}>In progress</Text>
               </TouchableOpacity>
 
@@ -452,7 +642,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                   <Text style={styles.kpiLabel}>COMPLETED</Text>
                   <MaterialCommunityIcons name="check-circle-outline" size={16} color="#159A79" />
                 </View>
-                <Text style={styles.kpiValue}>89</Text>
+                <Text style={styles.kpiValue}>{completedReqCount}</Text>
                 <Text style={styles.kpiSub}>Fulfilled</Text>
               </View>
 
@@ -466,7 +656,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                   <Text style={styles.kpiLabel}>LOW STOCK ALERTS</Text>
                   <MaterialCommunityIcons name="alert-circle-outline" size={16} color="#D9485F" />
                 </View>
-                <Text style={styles.kpiValue}>5</Text>
+                <Text style={styles.kpiValue}>{lowStockCount}</Text>
                 <Text style={styles.kpiSub}>Needs review</Text>
               </TouchableOpacity>
             </View>
@@ -477,9 +667,6 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
               <View style={styles.inventorySectionHeaderRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inventorySectionMainTitle}>Inventory Overview</Text>
-                  <Text style={styles.inventorySectionMainSub}>
-                    Live catalog, stock distribution, movement logs & damage audits
-                  </Text>
                 </View>
                 <View style={styles.liveInventoryBadge}>
                   <View style={styles.liveInventoryDot} />
@@ -500,11 +687,6 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                     setInvSearchQuery('');
                   }}
                 >
-                  <MaterialCommunityIcons
-                    name="view-list"
-                    size={16}
-                    color={inventoryTab === 'product_inventory' ? '#8235F4' : '#64748B'}
-                  />
                   <Text
                     style={[
                       styles.invNavTabText,
@@ -527,11 +709,6 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                     setInvSearchQuery('');
                   }}
                 >
-                  <MaterialCommunityIcons
-                    name="swap-horizontal"
-                    size={16}
-                    color={inventoryTab === 'inbound_outbound' ? '#8235F4' : '#64748B'}
-                  />
                   <Text
                     style={[
                       styles.invNavTabText,
@@ -554,11 +731,6 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                     setInvSearchQuery('');
                   }}
                 >
-                  <MaterialCommunityIcons
-                    name="alert-octagon"
-                    size={16}
-                    color={inventoryTab === 'damaged_products' ? '#D9485F' : '#64748B'}
-                  />
                   <Text
                     style={[
                       styles.invNavTabText,
@@ -576,37 +748,15 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
               {/* TAB 1: PRODUCT INVENTORY TABLE */}
               {inventoryTab === 'product_inventory' && (
                 <View style={styles.invTableCard}>
-                  {/* Top Toolbar */}
-                  <View style={styles.tableTopControls}>
-                    <View style={styles.tableSearchBox}>
-                      <Ionicons name="search" size={14} color="#7E7795" />
-                      <TextInput
-                        style={styles.tableSearchInput}
-                        placeholder="Search product name, category, SKU..."
-                        placeholderTextColor="#9C95B7"
-                        value={invSearchQuery}
-                        onChangeText={setInvSearchQuery}
-                      />
-                      {invSearchQuery ? (
-                        <TouchableOpacity onPress={() => setInvSearchQuery('')}>
-                          <Ionicons name="close-circle" size={15} color="#8A849C" />
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                    <View style={styles.tableScrollHint}>
-                      <Ionicons name="swap-horizontal" size={13} color="#8235F4" />
-                      <Text style={styles.tableScrollHintText}>Scroll ⇄</Text>
-                    </View>
-                  </View>
-
                   {/* Horizontal Scrollable Table */}
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={true}
-                    nestedScrollEnabled={true}
+                    directionalLockEnabled={true}
+                    overScrollMode="never"
                     contentContainerStyle={styles.tableScrollInner}
                   >
-                    <View style={styles.tableContainer}>
+                    <View style={styles.tableMainBox}>
                       {/* Header */}
                       <View style={styles.tableHeaderRow}>
                         <View style={[styles.tableHeaderCell, { width: 175 }]}>
@@ -635,7 +785,9 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                       {/* Body */}
                       {filteredProductInventory.length === 0 ? (
                         <View style={styles.emptyTableState}>
-                          <Text style={styles.emptyTableStateText}>No products match your search</Text>
+                          <MaterialCommunityIcons name="cube-outline" size={32} color="#A79FBF" />
+                          <Text style={styles.emptyTableText}>No product inventory records found</Text>
+                          <Text style={styles.emptyTableSubText}>No inventory data available for this location</Text>
                         </View>
                       ) : (
                         paginatedProductInventory.map((item, index) => {
@@ -644,12 +796,12 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                             <View
                               key={item.id || String(index)}
                               style={[
-                                styles.tableRow,
-                                isEven ? styles.tableRowEven : styles.tableRowOdd,
+                                styles.tableDataRow,
+                                isEven ? styles.tableDataRowEven : styles.tableDataRowOdd,
                               ]}
                             >
                               {/* Product Name */}
-                              <View style={[styles.tableCell, { width: 175 }]}>
+                              <View style={[styles.tableDataCell, { width: 175 }]}>
                                 <Text style={styles.cellMainText} numberOfLines={1}>{item.name}</Text>
                                 <View style={styles.cellSubBadgeRow}>
                                   <Text style={styles.cellSkuBadge}>{item.sku}</Text>
@@ -660,20 +812,20 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                               </View>
 
                               {/* UoM */}
-                              <View style={[styles.tableCell, { width: 70, alignItems: 'center' }]}>
+                              <View style={[styles.tableDataCell, { width: 70, alignItems: 'center' }]}>
                                 <View style={styles.uomPill}>
                                   <Text style={styles.uomPillText}>{item.uom}</Text>
                                 </View>
                               </View>
 
                               {/* Available Qty */}
-                              <View style={[styles.tableCell, { width: 105, alignItems: 'flex-end' }]}>
+                              <View style={[styles.tableDataCell, { width: 105, alignItems: 'flex-end' }]}>
                                 <Text style={styles.cellNumberText}>{item.availableQty}</Text>
                                 <Text style={styles.cellSubHint}>in warehouse</Text>
                               </View>
 
                               {/* Reserved Qty */}
-                              <View style={[styles.tableCell, { width: 105, alignItems: 'flex-end' }]}>
+                              <View style={[styles.tableDataCell, { width: 105, alignItems: 'flex-end' }]}>
                                 <View style={styles.reservedQtyBadge}>
                                   <Text style={styles.reservedQtyText}>{item.reservedQty}</Text>
                                 </View>
@@ -681,7 +833,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                               </View>
 
                               {/* Damage Qty */}
-                              <View style={[styles.tableCell, { width: 100, alignItems: 'flex-end' }]}>
+                              <View style={[styles.tableDataCell, { width: 100, alignItems: 'flex-end' }]}>
                                 <View style={item.damageQty > 0 ? styles.damageQtyBadgeActive : styles.damageQtyBadgeZero}>
                                   <Text style={item.damageQty > 0 ? styles.damageQtyTextActive : styles.damageQtyTextZero}>
                                     {item.damageQty}
@@ -691,7 +843,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                               </View>
 
                               {/* Total Available Qty */}
-                              <View style={[styles.tableCell, { width: 140, alignItems: 'flex-end' }]}>
+                              <View style={[styles.tableDataCell, { width: 140, alignItems: 'flex-end' }]}>
                                 <View style={styles.totalAvailBadge}>
                                   <Text style={styles.totalAvailText}>{item.totalAvailableQty}</Text>
                                 </View>
@@ -699,7 +851,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                               </View>
 
                               {/* Value */}
-                              <View style={[styles.tableCell, { width: 115, alignItems: 'flex-end' }]}>
+                              <View style={[styles.tableDataCell, { width: 115, alignItems: 'flex-end' }]}>
                                 <Text style={styles.valueText}>{item.value}</Text>
                                 <Text style={styles.cellSubHint}>inventory asset</Text>
                               </View>
@@ -710,13 +862,13 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                     </View>
                   </ScrollView>
 
-                  {/* 10-Row Table Pagination matching user screenshot */}
+                  {/* 10-Row Table Pagination matching Movement table */}
                   <TablePagination
                     currentPage={invPage}
                     totalItems={filteredProductInventory.length}
                     itemsPerPage={INV_PER_PAGE}
                     onPageChange={setInvPage}
-                    primaryColor="#38BDF8"
+                    primaryColor="#6D43C0"
                   />
                 </View>
               )}
@@ -724,37 +876,15 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
               {/* TAB 2: INBOUND & OUTBOUND TABLE */}
               {inventoryTab === 'inbound_outbound' && (
                 <View style={styles.invTableCard}>
-                  {/* Top Toolbar */}
-                  <View style={styles.tableTopControls}>
-                    <View style={styles.tableSearchBox}>
-                      <Ionicons name="search" size={14} color="#7E7795" />
-                      <TextInput
-                        style={styles.tableSearchInput}
-                        placeholder="Search date, type, product, handler..."
-                        placeholderTextColor="#9C95B7"
-                        value={invSearchQuery}
-                        onChangeText={setInvSearchQuery}
-                      />
-                      {invSearchQuery ? (
-                        <TouchableOpacity onPress={() => setInvSearchQuery('')}>
-                          <Ionicons name="close-circle" size={15} color="#8A849C" />
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                    <View style={styles.tableScrollHint}>
-                      <Ionicons name="swap-horizontal" size={13} color="#8235F4" />
-                      <Text style={styles.tableScrollHintText}>Scroll ⇄</Text>
-                    </View>
-                  </View>
-
                   {/* Horizontal Scrollable Table */}
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={true}
-                    nestedScrollEnabled={true}
+                    directionalLockEnabled={true}
+                    overScrollMode="never"
                     contentContainerStyle={styles.tableScrollInner}
                   >
-                    <View style={styles.tableContainer}>
+                    <View style={styles.tableMainBox}>
                       {/* Header */}
                       <View style={styles.tableHeaderRow}>
                         <View style={[styles.tableHeaderCell, { width: 145 }]}>
@@ -777,7 +907,9 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                       {/* Body */}
                       {filteredInboundOutbound.length === 0 ? (
                         <View style={styles.emptyTableState}>
-                          <Text style={styles.emptyTableStateText}>No movement logs match your search</Text>
+                          <MaterialCommunityIcons name="cube-outline" size={32} color="#A79FBF" />
+                          <Text style={styles.emptyTableText}>No movement records found</Text>
+                          <Text style={styles.emptyTableSubText}>No inbound/outbound logs for this location</Text>
                         </View>
                       ) : (
                         paginatedInboundOutbound.map((item, index) => {
@@ -787,18 +919,18 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                             <View
                               key={item.id || String(index)}
                               style={[
-                                styles.tableRow,
-                                isEven ? styles.tableRowEven : styles.tableRowOdd,
+                                styles.tableDataRow,
+                                isEven ? styles.tableDataRowEven : styles.tableDataRowOdd,
                               ]}
                             >
                               {/* Date and Time */}
-                              <View style={[styles.tableCell, { width: 145 }]}>
+                              <View style={[styles.tableDataCell, { width: 145 }]}>
                                 <Text style={styles.cellMainText}>{item.dateTime}</Text>
                                 <Text style={styles.cellSubHint}>timestamp</Text>
                               </View>
 
                               {/* Type */}
-                              <View style={[styles.tableCell, { width: 110, alignItems: 'center' }]}>
+                              <View style={[styles.tableDataCell, { width: 110, alignItems: 'center' }]}>
                                 <View style={isInbound ? styles.inboundBadge : styles.outboundBadge}>
                                   <Ionicons
                                     name={isInbound ? 'arrow-down-circle' : 'arrow-up-circle'}
@@ -813,13 +945,13 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                               </View>
 
                               {/* Product Name */}
-                              <View style={[styles.tableCell, { width: 195 }]}>
+                              <View style={[styles.tableDataCell, { width: 195 }]}>
                                 <Text style={styles.cellMainText} numberOfLines={1}>{item.productName}</Text>
                                 <Text style={styles.cellSubHint}>catalog item</Text>
                               </View>
 
                               {/* Qty */}
-                              <View style={[styles.tableCell, { width: 95, alignItems: 'flex-end' }]}>
+                              <View style={[styles.tableDataCell, { width: 95, alignItems: 'flex-end' }]}>
                                 <Text
                                   style={[
                                     styles.cellNumberText,
@@ -832,7 +964,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                               </View>
 
                               {/* Done By */}
-                              <View style={[styles.tableCell, { width: 145 }]}>
+                              <View style={[styles.tableDataCell, { width: 145 }]}>
                                 <View style={styles.doneByRow}>
                                   <View style={styles.userInitialCircle}>
                                     <Text style={styles.userInitialText}>
@@ -851,13 +983,13 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                     </View>
                   </ScrollView>
 
-                  {/* 10-Row Table Pagination matching user screenshot */}
+                  {/* 10-Row Table Pagination matching Movement table */}
                   <TablePagination
                     currentPage={invPage}
                     totalItems={filteredInboundOutbound.length}
                     itemsPerPage={INV_PER_PAGE}
                     onPageChange={setInvPage}
-                    primaryColor="#38BDF8"
+                    primaryColor="#6D43C0"
                   />
                 </View>
               )}
@@ -865,54 +997,34 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
               {/* TAB 3: DAMAGED PRODUCTS TABLE */}
               {inventoryTab === 'damaged_products' && (
                 <View style={styles.invTableCard}>
-                  {/* Top Toolbar */}
-                  <View style={styles.tableTopControls}>
-                    <View style={styles.tableSearchBox}>
-                      <Ionicons name="search" size={14} color="#7E7795" />
-                      <TextInput
-                        style={styles.tableSearchInput}
-                        placeholder="Search damaged item, quantity, reporter..."
-                        placeholderTextColor="#9C95B7"
-                        value={invSearchQuery}
-                        onChangeText={setInvSearchQuery}
-                      />
-                      {invSearchQuery ? (
-                        <TouchableOpacity onPress={() => setInvSearchQuery('')}>
-                          <Ionicons name="close-circle" size={15} color="#8A849C" />
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                    <View style={styles.tableScrollHint}>
-                      <Ionicons name="swap-horizontal" size={13} color="#8235F4" />
-                      <Text style={styles.tableScrollHintText}>Scroll ⇄</Text>
-                    </View>
-                  </View>
-
                   {/* Horizontal Scrollable Table */}
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={true}
-                    nestedScrollEnabled={true}
+                    directionalLockEnabled={true}
+                    overScrollMode="never"
                     contentContainerStyle={styles.tableScrollInner}
                   >
-                    <View style={styles.tableContainer}>
+                    <View style={styles.tableMainBox}>
                       {/* Header */}
-                      <View style={[styles.tableHeaderRow, { backgroundColor: '#261219' }]}>
+                      <View style={styles.tableHeaderRow}>
                         <View style={[styles.tableHeaderCell, { width: 200 }]}>
-                          <Text style={[styles.tableHeaderText, { color: '#FECDD3' }]}>PRODUCT NAME</Text>
+                          <Text style={styles.tableHeaderText}>PRODUCT NAME</Text>
                         </View>
                         <View style={[styles.tableHeaderCell, { width: 95, alignItems: 'center' }]}>
-                          <Text style={[styles.tableHeaderText, { color: '#FECDD3' }]}>QTY</Text>
+                          <Text style={styles.tableHeaderText}>QTY</Text>
                         </View>
                         <View style={[styles.tableHeaderCell, { width: 280 }]}>
-                          <Text style={[styles.tableHeaderText, { color: '#FECDD3' }]}>DAMAGED BY</Text>
+                          <Text style={styles.tableHeaderText}>DAMAGED BY</Text>
                         </View>
                       </View>
 
                       {/* Body */}
                       {filteredDamagedProducts.length === 0 ? (
                         <View style={styles.emptyTableState}>
-                          <Text style={styles.emptyTableStateText}>No damaged product records found</Text>
+                          <MaterialCommunityIcons name="cube-outline" size={32} color="#A79FBF" />
+                          <Text style={styles.emptyTableText}>No damaged product records found</Text>
+                          <Text style={styles.emptyTableSubText}>No damage logs available for this location</Text>
                         </View>
                       ) : (
                         paginatedDamagedProducts.map((item, index) => {
@@ -921,18 +1033,18 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                             <View
                               key={item.id || String(index)}
                               style={[
-                                styles.tableRow,
-                                isEven ? styles.tableRowEven : styles.tableRowOdd,
+                                styles.tableDataRow,
+                                isEven ? styles.tableDataRowEven : styles.tableDataRowOdd,
                               ]}
                             >
                               {/* Product Name */}
-                              <View style={[styles.tableCell, { width: 200 }]}>
+                              <View style={[styles.tableDataCell, { width: 200 }]}>
                                 <Text style={styles.cellMainText} numberOfLines={1}>{item.productName}</Text>
                                 <Text style={[styles.cellSubHint, { color: '#D9485F' }]}>Under damage review</Text>
                               </View>
 
                               {/* Qty */}
-                              <View style={[styles.tableCell, { width: 95, alignItems: 'center' }]}>
+                              <View style={[styles.tableDataCell, { width: 95, alignItems: 'center' }]}>
                                 <View style={styles.damageBadgePill}>
                                   <Ionicons name="alert-circle" size={12} color="#DC2626" style={{ marginRight: 3 }} />
                                   <Text style={styles.damageBadgePillText}>{item.qty}</Text>
@@ -940,7 +1052,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                               </View>
 
                               {/* Damaged By */}
-                              <View style={[styles.tableCell, { width: 280 }]}>
+                              <View style={[styles.tableDataCell, { width: 280 }]}>
                                 <Text style={styles.damagedByText} numberOfLines={2}>
                                   {item.damagedBy}
                                 </Text>
@@ -953,13 +1065,13 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                     </View>
                   </ScrollView>
 
-                  {/* 10-Row Table Pagination matching user screenshot */}
+                  {/* 10-Row Table Pagination matching Movement table */}
                   <TablePagination
                     currentPage={invPage}
                     totalItems={filteredDamagedProducts.length}
                     itemsPerPage={INV_PER_PAGE}
                     onPageChange={setInvPage}
-                    primaryColor="#38BDF8"
+                    primaryColor="#6D43C0"
                   />
                 </View>
               )}
@@ -987,7 +1099,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                   style={[styles.taskChipBox, taskFilter === 'pending' && styles.taskChipActive]}
                   onPress={() => setTaskFilter(taskFilter === 'pending' ? 'all' : 'pending')}
                 >
-                  <Text style={[styles.metricItemNum, { color: '#8235F4' }]}>4</Text>
+                  <Text style={[styles.metricItemNum, { color: '#8235F4' }]}>{pendingReqCount}</Text>
                   <Text style={styles.metricItemLabel}>Pending</Text>
                 </TouchableOpacity>
 
@@ -997,7 +1109,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                   style={[styles.taskChipBox, taskFilter === 'in_progress' && styles.taskChipActive]}
                   onPress={() => setTaskFilter(taskFilter === 'in_progress' ? 'all' : 'in_progress')}
                 >
-                  <Text style={[styles.metricItemNum, { color: '#0284C7' }]}>2</Text>
+                  <Text style={[styles.metricItemNum, { color: '#0284C7' }]}>{inProgressReqCount}</Text>
                   <Text style={styles.metricItemLabel}>In Progress</Text>
                 </TouchableOpacity>
 
@@ -1007,7 +1119,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                   style={[styles.taskChipBox, taskFilter === 'completed' && styles.taskChipActive]}
                   onPress={() => setTaskFilter(taskFilter === 'completed' ? 'all' : 'completed')}
                 >
-                  <Text style={[styles.metricItemNum, { color: '#159A79' }]}>18</Text>
+                  <Text style={[styles.metricItemNum, { color: '#159A79' }]}>{completedReqCount}</Text>
                   <Text style={styles.metricItemLabel}>Completed</Text>
                 </TouchableOpacity>
               </View>
@@ -1025,13 +1137,13 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
 
               <View style={styles.stagePipelineRow}>
                 <View style={[styles.stageBadge, styles.stageBadgeActive]}>
-                  <Text style={styles.stageBadgeTextActive}>Putaway (2 Active)</Text>
+                  <Text style={styles.stageBadgeTextActive}>Putaway (0 Active)</Text>
                 </View>
                 <View style={styles.stageBadge}>
-                  <Text style={styles.stageBadgeText}>Generated (1)</Text>
+                  <Text style={styles.stageBadgeText}>Generated (0)</Text>
                 </View>
                 <View style={styles.stageBadge}>
-                  <Text style={styles.stageBadgeText}>Completed (14)</Text>
+                  <Text style={styles.stageBadgeText}>Completed (0)</Text>
                 </View>
               </View>
             </View>
@@ -1048,10 +1160,10 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
 
               <View style={styles.stagePipelineRow}>
                 <View style={[styles.stageBadge, styles.stageBadgeActive]}>
-                  <Text style={styles.stageBadgeTextActive}>In Progress (3 Active)</Text>
+                  <Text style={styles.stageBadgeTextActive}>In Progress (0 Active)</Text>
                 </View>
                 <View style={styles.stageBadge}>
-                  <Text style={styles.stageBadgeText}>P-Completed (2)</Text>
+                  <Text style={styles.stageBadgeText}>P-Completed (0)</Text>
                 </View>
                 <View style={styles.stageBadge}>
                   <Text style={styles.stageBadgeText}>P-Cancelled (0)</Text>
@@ -1074,7 +1186,7 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
                 <Text style={styles.lowStockCardSub}>Tap to open Stock filtered to low-stock items</Text>
               </View>
               <View style={styles.lowStockBadgeCount}>
-                <Text style={styles.lowStockBadgeCountText}>5 Items</Text>
+                <Text style={styles.lowStockBadgeCountText}>{lowStockCount} Items</Text>
               </View>
             </TouchableOpacity>
 
@@ -1138,14 +1250,30 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
 
               <View style={styles.eventHeroBox}>
                 <View style={styles.eventHeroTop}>
-                  <Text style={styles.eventHeroTitle}>City Music Fest 2026</Text>
-                  <View style={styles.eventLiveBadge}>
-                    <View style={styles.greenDot} />
-                    <Text style={styles.eventLiveText}>Live On-Ground</Text>
+                  <Text style={styles.eventHeroTitle}>
+                    {userAssignedEvents.length > 0
+                      ? selectedEvent === 'ALL'
+                        ? userAssignedEvents[0]
+                        : selectedEvent
+                      : 'No Assigned Event'}
+                  </Text>
+                  <View style={userAssignedEvents.length > 0 ? styles.eventLiveBadge : styles.eventUpcomingBadge}>
+                    {userAssignedEvents.length > 0 ? <View style={styles.greenDot} /> : null}
+                    <Text style={userAssignedEvents.length > 0 ? styles.eventLiveText : styles.eventUpcomingText}>
+                      {userAssignedEvents.length > 0 ? 'Assigned' : 'Inactive'}
+                    </Text>
                   </View>
                 </View>
-                <Text style={styles.eventHeroMeta}>Mumbai · Jio Garden · Oct 10–12</Text>
-                <Text style={styles.eventHeroLead}>Lead Planner: Sneha Patil</Text>
+                <Text style={styles.eventHeroMeta}>
+                  {userAssignedEvents.length > 0
+                    ? selectedLocation === 'ALL'
+                      ? `${userAssignedEvents.length} events assigned`
+                      : selectedLocation
+                    : 'No event assigned to this user'}
+                </Text>
+                <Text style={styles.eventHeroLead}>
+                  {session?.name ? `Ground Operator: ${session.name}` : 'Ground Account'}
+                </Text>
               </View>
             </View>
 
@@ -1161,17 +1289,17 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
 
               <View style={styles.metricsPillRow}>
                 <View style={styles.metricItemCol}>
-                  <Text style={[styles.metricItemNum, { color: '#8235F4' }]}>3</Text>
+                  <Text style={[styles.metricItemNum, { color: '#8235F4' }]}>{pendingReqCount}</Text>
                   <Text style={styles.metricItemLabel}>Pending</Text>
                 </View>
                 <View style={styles.metricDivider} />
                 <View style={styles.metricItemCol}>
-                  <Text style={[styles.metricItemNum, { color: '#0284C7' }]}>2</Text>
+                  <Text style={[styles.metricItemNum, { color: '#0284C7' }]}>{inProgressReqCount}</Text>
                   <Text style={styles.metricItemLabel}>In Progress</Text>
                 </View>
                 <View style={styles.metricDivider} />
                 <View style={styles.metricItemCol}>
-                  <Text style={[styles.metricItemNum, { color: '#159A79' }]}>12</Text>
+                  <Text style={[styles.metricItemNum, { color: '#159A79' }]}>{completedReqCount}</Text>
                   <Text style={styles.metricItemLabel}>Completed</Text>
                 </View>
               </View>
@@ -1228,12 +1356,24 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
 
               <View style={styles.eventHeroBox}>
                 <View style={styles.eventHeroTop}>
-                  <Text style={styles.eventHeroTitle}>City Music Fest & Brand Launch</Text>
+                  <Text style={styles.eventHeroTitle}>
+                    {userAssignedEvents.length > 0
+                      ? selectedEvent === 'ALL'
+                        ? `${userAssignedEvents.length} Events Assigned`
+                        : selectedEvent
+                      : 'No active events'}
+                  </Text>
                   <View style={styles.eventUpcomingBadge}>
-                    <Text style={styles.eventUpcomingText}>2 Upcoming</Text>
+                    <Text style={styles.eventUpcomingText}>{userAssignedEvents.length} Active</Text>
                   </View>
                 </View>
-                <Text style={styles.eventHeroMeta}>Mumbai & Pune hubs · Staging active</Text>
+                <Text style={styles.eventHeroMeta}>
+                  {userAssignedEvents.length > 0
+                    ? selectedLocation === 'ALL'
+                      ? userAssignedEvents.join(', ')
+                      : selectedLocation
+                    : 'No events assigned to account'}
+                </Text>
               </View>
             </View>
 
@@ -1249,17 +1389,17 @@ export default function DashboardTabScreen({ session, onLogout, onNavigateTab })
 
               <View style={styles.metricsPillRow}>
                 <View style={styles.metricItemCol}>
-                  <Text style={[styles.metricItemNum, { color: '#8235F4' }]}>5</Text>
+                  <Text style={[styles.metricItemNum, { color: '#8235F4' }]}>{pendingReqCount}</Text>
                   <Text style={styles.metricItemLabel}>Pending</Text>
                 </View>
                 <View style={styles.metricDivider} />
                 <View style={styles.metricItemCol}>
-                  <Text style={[styles.metricItemNum, { color: '#0284C7' }]}>3</Text>
+                  <Text style={[styles.metricItemNum, { color: '#0284C7' }]}>{inProgressReqCount}</Text>
                   <Text style={styles.metricItemLabel}>In Progress</Text>
                 </View>
                 <View style={styles.metricDivider} />
                 <View style={styles.metricItemCol}>
-                  <Text style={[styles.metricItemNum, { color: '#159A79' }]}>21</Text>
+                  <Text style={[styles.metricItemNum, { color: '#159A79' }]}>{completedReqCount}</Text>
                   <Text style={styles.metricItemLabel}>Completed</Text>
                 </View>
               </View>
@@ -1328,14 +1468,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F4FA',
   },
 
-  // --- Top Navy Header ---
-  navyHeader: {
-    backgroundColor: '#17102F',
-    paddingTop: Platform.OS === 'ios' ? 14 : 14,
-    paddingBottom: 20,
-    paddingHorizontal: 18,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+  // --- Top Header on White Area ---
+  whiteDashboardHeader: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: 12,
+    paddingBottom: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDE8F5',
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -1431,33 +1571,232 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   headerDashboardTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: '#1E1435',
     letterSpacing: -0.3,
   },
-  scopeRow: {
+  // --- Dynamic Unified Scope & Location Dropdown Bar (On White) ---
+  splitDropdownRow: {
+    marginTop: 10,
+    width: '100%',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  splitDropdownBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2DCF0',
   },
-  scopeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#20C997',
+  splitDropdownBtnActiveWh: {
+    backgroundColor: '#F3EEFF',
+    borderColor: '#8235F4',
+  },
+  splitDropdownBtnActiveEv: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#4F46E5',
+  },
+  splitDropdownBtnInactive: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2DCF0',
+  },
+  splitDropdownTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  splitDropdownPrefix: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#706584',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  splitDropdownPrefixActiveWh: {
+    color: '#8235F4',
+  },
+  splitDropdownPrefixActiveEv: {
+    color: '#4F46E5',
+  },
+  splitDropdownValue: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#1E1435',
+    marginTop: -1,
+  },
+  splitDropdownValueActiveWh: {
+    color: '#1E1435',
+  },
+  splitDropdownValueActiveEv: {
+    color: '#1E1435',
+  },
+
+  // --- Single Full-Width Dropdown Bar (Only Warehouse or Only Event) ---
+  singleFullDropdownBar: {
+    marginTop: 10,
+    width: '100%',
+    height: 44,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#DDD6FE',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#17102F',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  singleFullDropdownPrefix: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6D28D9',
     marginRight: 6,
   },
-  headerScopeSubtitle: {
-    fontSize: 11.5,
-    color: '#C9B9F0',
+  singleFullDropdownValue: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#1E1435',
+    flex: 1,
+  },
+  singleFullCountBadge: {
+    backgroundColor: '#F3EEFF',
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    marginRight: 4,
+  },
+  singleFullCountText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#8235F4',
+  },
+
+  // --- Unassigned Full-Width Bar (Null) ---
+  unassignedFullDropdownBar: {
+    marginTop: 10,
+    width: '100%',
+    height: 44,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  unassignedFullPrefix: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
+    marginRight: 6,
+  },
+  unassignedFullValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
+    flex: 1,
+  },
+  unassignedBadge: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    marginRight: 4,
+  },
+  unassignedBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#DC2626',
+    textTransform: 'uppercase',
+  },
+
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 10, 30, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  locationDropdownModalCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EAFE',
+  },
+  modalHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#21183B',
+  },
+  modalHeaderSubtitle: {
+    fontSize: 10.5,
+    color: '#777187',
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  locationOptionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  locationOptionRowActive: {
+    backgroundColor: '#F0EAFE',
+  },
+  locationOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  locationOptionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#33294D',
+  },
+  locationOptionTitleActive: {
+    color: '#6D43C0',
+    fontWeight: '800',
+  },
+  locationOptionDesc: {
+    fontSize: 9.5,
+    color: '#777187',
+    marginTop: 1,
   },
 
   // --- Scroll Body ---
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 60,
+    paddingBottom: 120,
   },
   cardHeaderRow: {
     marginBottom: 10,
@@ -1905,10 +2244,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#ECFDF5',
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#A7F3D0',
+    marginTop: -5,
   },
   liveInventoryDot: {
     width: 6,
@@ -1922,6 +2262,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#059669',
     letterSpacing: 0.5,
+    includeFontPadding: false,
   },
   invTabsNavBar: {
     flexDirection: 'row',
@@ -2027,27 +2368,34 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   tableScrollInner: {
-    minWidth: '100%',
+    paddingHorizontal: 12,
   },
   tableContainer: {
     flexDirection: 'column',
   },
+  tableMainBox: {
+    borderWidth: 1,
+    borderColor: '#D9D3E5',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
   tableHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: '#1E1435',
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    alignItems: 'center',
+    backgroundColor: '#F0ECFA',
+    borderBottomWidth: 1,
+    borderBottomColor: '#D9D3E5',
   },
   tableHeaderCell: {
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRightWidth: 1,
+    borderRightColor: '#D9D3E5',
     justifyContent: 'center',
-    paddingHorizontal: 6,
   },
   tableHeaderText: {
-    fontSize: 9.5,
-    fontWeight: '800',
-    color: '#E9DFFC',
-    letterSpacing: 0.5,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#372064',
   },
   emptyTableState: {
     paddingVertical: 32,
@@ -2055,33 +2403,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyTableStateText: {
-    fontSize: 12,
-    color: '#8C85A3',
-    fontWeight: '600',
+  emptyTableText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#372064',
+    marginTop: 8,
+  },
+  emptyTableSubText: {
+    fontSize: 10.5,
+    color: '#8B8498',
+    marginTop: 2,
   },
   tableRow: {
     flexDirection: 'row',
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#F0ECF8',
+    borderBottomColor: '#D9D3E5',
+  },
+  tableDataRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#D9D3E5',
+  },
+  tableDataRowEven: {
+    backgroundColor: '#FFFFFF',
+  },
+  tableDataRowOdd: {
+    backgroundColor: '#FAF8FE',
   },
   tableRowEven: {
     backgroundColor: '#FFFFFF',
   },
   tableRowOdd: {
-    backgroundColor: '#FAF9FD',
+    backgroundColor: '#FAF8FE',
   },
   tableCell: {
+    paddingVertical: 9,
+    paddingHorizontal: 8,
+    borderRightWidth: 1,
+    borderRightColor: '#D9D3E5',
     justifyContent: 'center',
-    paddingHorizontal: 6,
+  },
+  tableDataCell: {
+    paddingVertical: 9,
+    paddingHorizontal: 8,
+    borderRightWidth: 1,
+    borderRightColor: '#D9D3E5',
+    justifyContent: 'center',
   },
   cellMainText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1E1435',
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#211642',
   },
   cellSubBadgeRow: {
     flexDirection: 'row',
@@ -2099,16 +2471,16 @@ const styles = StyleSheet.create({
   },
   cellCatText: {
     fontSize: 9.5,
-    color: '#8C85A3',
+    color: '#706584',
   },
   cellNumberText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#1E1435',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#372064',
   },
   cellSubHint: {
-    fontSize: 9,
-    color: '#9C95B7',
+    fontSize: 9.5,
+    color: '#706584',
     marginTop: 1,
   },
   uomPill: {

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import masterService from '../../services/masterService';
+import CommonCalendarModal from '../../components/CommonCalendarModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -36,6 +37,7 @@ export default function RaiseRequestsTabScreen({ session, onLogout, onNavigateTa
   const [pocNo, setPocNo] = useState('9820198201');
 
   // --- Modals State ---
+  const [calendarTarget, setCalendarTarget] = useState(null); // 'eventDate' | 'requiredDate' | null
   const [eventModalVisible, setEventModalVisible] = useState(false);
   const [productModalVisible, setProductModalVisible] = useState(false);
   const [activeRowIdx, setActiveRowIdx] = useState(0);
@@ -50,10 +52,18 @@ export default function RaiseRequestsTabScreen({ session, onLogout, onNavigateTa
   }, []);
 
   const loadData = () => {
-    const evs = masterService.getEvents ? masterService.getEvents() : [];
-    const prods = masterService.getProducts ? masterService.getProducts() : [];
+    const rawEvs = masterService.getEvents ? (masterService?.getEvents?.() || []) : [];
+    const evs = rawEvs.filter((e) => (e.status || 'active').toLowerCase() === 'active');
+    const prods = masterService.getProducts ? (masterService?.getProducts?.() || []) : [];
     setEventsList(evs);
     setCatalogProducts(prods);
+    if (evs.length === 1 && !selectedEvent) {
+      setSelectedEvent(evs[0]);
+      setEventDate(evs[0].dates || '');
+      if (evs[0].venue) {
+        setDeliveryLocation(evs[0].venue);
+      }
+    }
   };
 
   // --- Calculations for Stepper Progress ---
@@ -258,7 +268,10 @@ export default function RaiseRequestsTabScreen({ session, onLogout, onNavigateTa
       <View style={styles.header}>
         <View style={styles.headerTextCol}>
           <Text style={styles.headerTitle}>Raise Request</Text>
-          <Text style={styles.headerSubtitle}>Create a stock request for your event</Text>
+          <View style={styles.scopeRow}>
+            <View style={styles.scopeDot} />
+            <Text style={styles.headerSubtitle}>Create a stock request for your event</Text>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -420,14 +433,21 @@ export default function RaiseRequestsTabScreen({ session, onLogout, onNavigateTa
             <View style={styles.eventDateLabelCol}>
               <Text style={styles.fieldLabel}>Event Date</Text>
             </View>
-            <View style={styles.eventDateInputCol}>
+            <View style={[styles.eventDateInputCol, { flexDirection: 'row', alignItems: 'center' }]}>
               <TextInput
-                style={styles.dateInputField}
+                style={[styles.dateInputField, { flex: 1, paddingRight: 32 }]}
                 placeholder="DD / MM / YYYY"
                 placeholderTextColor="#8B8498"
                 value={eventDate}
                 onChangeText={setEventDate}
               />
+              <TouchableOpacity
+                onPress={() => setCalendarTarget('eventDate')}
+                style={{ position: 'absolute', right: 10, padding: 4 }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="calendar-outline" size={18} color="#6D43C0" />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -559,18 +579,11 @@ export default function RaiseRequestsTabScreen({ session, onLogout, onNavigateTa
               onChangeText={setRequiredDate}
             />
             <TouchableOpacity
-              onPress={() => {
-                // Quick shortcut: set to tomorrow's date or today
-                const d = new Date();
-                d.setDate(d.getDate() + 1);
-                const day = String(d.getDate()).padStart(2, '0');
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const yr = d.getFullYear();
-                setRequiredDate(`${day} / ${month} / ${yr}`);
-              }}
+              onPress={() => setCalendarTarget('requiredDate')}
               style={styles.iconInputRightBtn}
+              activeOpacity={0.7}
             >
-              <Text style={styles.calendarIconText}>▦</Text>
+              <Ionicons name="calendar-outline" size={18} color="#6D43C0" />
             </TouchableOpacity>
           </View>
 
@@ -893,6 +906,20 @@ export default function RaiseRequestsTabScreen({ session, onLogout, onNavigateTa
           </View>
         </View>
       </Modal>
+      {/* Universal Calendar Modal */}
+      <CommonCalendarModal
+        visible={calendarTarget !== null}
+        onClose={() => setCalendarTarget(null)}
+        selectedDate={calendarTarget === 'eventDate' ? eventDate : requiredDate}
+        onSelectDate={(formatted) => {
+          if (calendarTarget === 'eventDate') {
+            setEventDate(formatted);
+          } else if (calendarTarget === 'requiredDate') {
+            setRequiredDate(formatted);
+          }
+        }}
+        format="SPACED_SLASH"
+      />
     </View>
   );
 }
@@ -903,47 +930,57 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F4FA',
   },
 
-  // --- SVG Header (lines 1-7) ---
+  // --- Header on White Area ---
   header: {
-    height: 76,
-    backgroundColor: '#17102F',
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#251A46',
+    borderBottomColor: '#EDE8F5',
   },
   headerTextCol: {
     flex: 1,
     justifyContent: 'center',
   },
   headerTitle: {
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E1435',
+    letterSpacing: -0.3,
+  },
+  scopeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  scopeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#20C997',
+    marginRight: 6,
   },
   headerSubtitle: {
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-    fontSize: 10.5,
-    fontWeight: '400',
-    color: '#D8D0EA',
-    marginTop: 3,
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#706984',
   },
   closeBtn: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#30264B',
+    backgroundColor: '#F3EEFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeBtnText: {
-    color: '#FFFFFF',
+    color: '#706584',
     fontSize: 17,
-    fontWeight: '500',
+    fontWeight: '600',
     marginTop: -2,
   },
 

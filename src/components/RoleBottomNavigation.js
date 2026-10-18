@@ -10,7 +10,10 @@ export default function RoleBottomNavigation({ tabs, activeTabKey, onTabSelect }
     <View style={styles.navContainer}>
       <View style={styles.navInnerRow}>
         {tabs.map((tab) => {
-          const isActive = tab.key === activeTabKey;
+          const isActive =
+            tab.key === activeTabKey ||
+            (tab.key === 'user-setup' && activeTabKey === 'userSetup') ||
+            (tab.key === 'userSetup' && activeTabKey === 'user-setup');
           const iconName = isActive ? tab.activeIcon || tab.icon : tab.icon;
 
           return (
@@ -29,7 +32,7 @@ export default function RoleBottomNavigation({ tabs, activeTabKey, onTabSelect }
                 <MaterialCommunityIcons
                   name={iconName}
                   size={22}
-                  color={isActive ? '#FFFFFF' : '#8E7BB5'}
+                  color={isActive ? '#FFFFFF' : '#8A81A5'}
                 />
               </View>
 
@@ -52,54 +55,46 @@ export default function RoleBottomNavigation({ tabs, activeTabKey, onTabSelect }
 
 const styles = StyleSheet.create({
   navContainer: {
-    backgroundColor: '#12082B',
+    backgroundColor: '#160D33',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(124, 58, 237, 0.22)',
-    paddingTop: 8,
+    borderTopColor: '#281E48',
+    paddingTop: 10,
     paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 12,
   },
   navInnerRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 60,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 3,
+    backgroundColor: 'transparent',
+    marginBottom: 4,
   },
   iconWrapActive: {
-    backgroundColor: '#7C3AED',
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
-    elevation: 4,
+    backgroundColor: '#8235F4',
   },
   tabLabel: {
-    fontSize: 10.5,
-    fontWeight: '600',
-    color: '#8E7BB5',
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#8A81A5',
     textAlign: 'center',
-    letterSpacing: 0.1,
+    letterSpacing: 0.2,
   },
   tabLabelActive: {
-    color: '#E9D5FF',
+    color: '#FFFFFF',
     fontWeight: '700',
   },
 });

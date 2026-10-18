@@ -10,15 +10,13 @@ import {
   Alert,
   Switch,
   Platform,
+  FlatList,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { authService } from '../../services/authService';
+import { masterService } from '../../services/masterService';
 import { COLORS } from '../../theme/colors';
-
-// Warehouses & Events catalog
-const WAREHOUSE_LIST = ['Warehouse A', 'Warehouse B', 'Warehouse C', 'Warehouse D'];
-const EVENT_LIST = ['Event A', 'Event B', 'Event C', 'Main Arena Hub'];
 
 export default function UserSetupTabScreen({ session, onLogout }) {
   // State for user list & stats
@@ -34,7 +32,7 @@ export default function UserSetupTabScreen({ session, onLogout }) {
   // 4: Screen 04 (Ground User Form)
   // 5: Screen 05 (Three-Dot Actions Sheet)
   const [activeModal, setActiveModal] = useState(null); // 'selectRole' | 'standardForm' | 'groundForm' | 'actionsMenu' | null
-  const [selectedRole, setSelectedRole] = useState('Operations Manager');
+  const [selectedRole, setSelectedRole] = useState('Operation Manager');
   const [groundType, setGroundType] = useState('Warehouse Ground'); // 'Warehouse Ground' | 'Event Ground'
   const [selectedUser, setSelectedUser] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -45,14 +43,21 @@ export default function UserSetupTabScreen({ session, onLogout }) {
   const [emailId, setEmailId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [accessCode, setAccessCode] = useState('DS');
   const [accessId, setAccessId] = useState('');
   const [isEditingAccessId, setIsEditingAccessId] = useState(false);
-  const [assignedLocations, setAssignedLocations] = useState(['Warehouse A']);
+  const [assignedWarehouses, setAssignedWarehouses] = useState([]);
+  const [assignedEvents, setAssignedEvents] = useState([]);
+  const [isWarehouseDropdownOpen, setIsWarehouseDropdownOpen] = useState(false);
+  const [isEventDropdownOpen, setIsEventDropdownOpen] = useState(false);
+  const [locationPickerType, setLocationPickerType] = useState(null); // 'warehouse' | 'event' | null
+  const [pickerSearchQuery, setPickerSearchQuery] = useState('');
   const [isAccountActive, setIsAccountActive] = useState(true);
   const [formError, setFormError] = useState('');
 
   // Load and refresh user records
-  const refreshUsers = () => {
+  const refreshUsers = async () => {
+    await authService.init();
     const list = authService.getUsers();
     setUsers(list);
     const m = authService.getUserMetrics();
@@ -61,6 +66,12 @@ export default function UserSetupTabScreen({ session, onLogout }) {
 
   useEffect(() => {
     refreshUsers();
+    if (authService.subscribe) {
+      const unsubscribe = authService.subscribe(() => {
+        refreshUsers();
+      });
+      return () => unsubscribe();
+    }
   }, []);
 
   // Filtered users list (search + status filter)
@@ -82,34 +93,42 @@ export default function UserSetupTabScreen({ session, onLogout }) {
   const handleStartCreateUser = () => {
     setIsEditMode(false);
     setFormError('');
+    setIsWarehouseDropdownOpen(false);
+    setIsEventDropdownOpen(false);
     setActiveModal('selectRole');
   };
 
-  // Select Role and advance to Screen 03 or Screen 04
-  const handleSelectRole = (role, groundSubtype = null) => {
+  // Select Role and advance to Screen 03 (Standard User Form)
+  const handleSelectRole = (role) => {
     setSelectedRole(role);
     setFormError('');
-
-    if (role === 'Ground User' || role === 'Warehouse Ground User' || role === 'Event Ground User') {
-      const gType = groundSubtype || (role === 'Event Ground User' ? 'Event Ground' : 'Warehouse Ground');
-      setGroundType(gType);
-      const randomNum = Math.floor(1000 + Math.random() * 9000);
-      const generatedCode = gType === 'Warehouse Ground' ? `WHG-${randomNum}` : `EVG-${randomNum}`;
-      setAccessId(generatedCode);
-      setIsEditingAccessId(false);
-      setFullName('');
-      setAssignedLocations(gType === 'Warehouse Ground' ? ['Warehouse A'] : ['Event A']);
-      setIsAccountActive(true);
-      setActiveModal('groundForm');
+    setFullName('');
+    setPhoneNumber('');
+    setEmailId('');
+    setPassword('');
+    setAccessCode('DS');
+    setIsWarehouseDropdownOpen(false);
+    setIsEventDropdownOpen(false);
+    if (role === 'Admin') {
+      const activeWhs = masterService
+        .getWarehouses()
+        .filter((w) => (w.status || 'active').toLowerCase() === 'active')
+        .map((w) => w.name);
+      setAssignedWarehouses(activeWhs);
+      setAssignedEvents([]);
+    } else if (role === 'Event Planner') {
+      const activeEvs = masterService
+        .getEvents()
+        .filter((e) => (e.status || 'active').toLowerCase() === 'active')
+        .map((e) => e.name);
+      setAssignedEvents(activeEvs);
+      setAssignedWarehouses([]);
     } else {
-      setFullName('');
-      setPhoneNumber('');
-      setEmailId('');
-      setPassword('');
-      setAssignedLocations(role === 'Event Planner' ? ['Event A'] : ['Warehouse A', 'Warehouse B']);
-      setIsAccountActive(true);
-      setActiveModal('standardForm');
+      setAssignedWarehouses([]);
+      setAssignedEvents([]);
     }
+    setIsAccountActive(true);
+    setActiveModal('standardForm');
   };
 
   // Open Screen 05: Three-Dot Actions Sheet
@@ -118,68 +137,121 @@ export default function UserSetupTabScreen({ session, onLogout }) {
     setActiveModal('actionsMenu');
   };
 
+  // Helper to check if user is Super Admin
+  const isSelectedUserSuperAdmin = (u) => {
+    if (!u) return false;
+    const email = (u.email || '').toLowerCase().trim();
+    const id = (u.id || '').toUpperCase().trim();
+    const userId = (u.userId || '').toUpperCase().trim();
+    const role = (u.role || '').toLowerCase().trim();
+    return (
+      email === 'super.admin@district.com' ||
+      id === 'USR-001' ||
+      userId === 'ADM-001' ||
+      role === 'admin' ||
+      role === 'super admin'
+    );
+  };
+
   // Open Edit flow from Action Menu
   const handleEditFromActionMenu = () => {
     if (!selectedUser) return;
+    const userToEdit = selectedUser;
+    setActiveModal(null);
     setIsEditMode(true);
     setFormError('');
 
-    const role = selectedUser.role || 'Warehouse Ground User';
+    let role = userToEdit.role || 'Warehouse User';
+    if (role === 'Operations Manager') role = 'Operation Manager';
+    if (role === 'Warehouse Ground User' || role === 'Ground User — Warehouse' || role === 'Warehouse Ground') role = 'Warehouse User';
+    if (role === 'Event Ground User' || role === 'Ground User — Event' || role === 'Event Ground') role = 'Event User';
     setSelectedRole(role);
-    setFullName(selectedUser.name || '');
-    setPhoneNumber(selectedUser.mobile ? selectedUser.mobile.replace('+91 ', '') : '');
-    setEmailId(selectedUser.email || '');
-    setAssignedLocations(selectedUser.assignedLocations || ['Warehouse A']);
-    setIsAccountActive(selectedUser.status === 'active');
+    setFullName(userToEdit.name || '');
+    setPhoneNumber(userToEdit.mobile ? userToEdit.mobile.replace('+91 ', '') : '');
+    setEmailId(userToEdit.email || '');
 
-    if (role.includes('Ground')) {
-      const gType = role.includes('Event') ? 'Event Ground' : 'Warehouse Ground';
-      setGroundType(gType);
-      setAccessId(selectedUser.userId || selectedUser.id || 'WHG-0001');
-      setIsEditingAccessId(false);
-      setActiveModal('groundForm');
-    } else {
-      setPassword('');
-      setActiveModal('standardForm');
-    }
-  };
+    // Separate locations into warehouses and events (strictly active ones from masterService)
+    const rawLocs = userToEdit.assignedLocations || [];
+    const allWhs = masterService
+      .getWarehouses()
+      .filter((w) => (w.status || 'active').toLowerCase() === 'active');
+    const allEvs = masterService
+      .getEvents()
+      .filter((e) => (e.status || 'active').toLowerCase() === 'active');
+    const whs = [];
+    const evs = [];
 
-  // Toggle user activation/deactivation
-  const handleToggleActiveStatus = () => {
-    if (!selectedUser) return;
-    const res = authService.toggleUserStatus(selectedUser.id);
-    if (res.success) {
-      refreshUsers();
-      setSelectedUser((prev) => ({ ...prev, status: res.status }));
-      Alert.alert(
-        'Status Updated',
-        `Account has been ${res.status === 'active' ? 'Activated' : 'Deactivated'} successfully.`
+    rawLocs.forEach((loc) => {
+      const locStr = String(loc || '').trim();
+      if (!locStr) return;
+      const matchedWh = allWhs.find(
+        (w) => (w.name || w.code || String(w.id)).toLowerCase() === locStr.toLowerCase()
       );
+      const matchedEv = allEvs.find(
+        (e) => (e.name || e.code || String(e.id)).toLowerCase() === locStr.toLowerCase()
+      );
+      if (matchedWh) {
+        whs.push(matchedWh.name);
+      } else if (matchedEv) {
+        evs.push(matchedEv.name);
+      }
+    });
+
+    if (role === 'Admin') {
+      const activeWhNames = allWhs.map((w) => w.name);
+      setAssignedWarehouses(Array.from(new Set([...whs, ...activeWhNames])));
+      setAssignedEvents([]);
+    } else if (role === 'Event Planner') {
+      const activeEvNames = allEvs.map((e) => e.name);
+      setAssignedEvents(Array.from(new Set([...evs, ...activeEvNames])));
+      setAssignedWarehouses([]);
+    } else if (role === 'Event User') {
+      setAssignedEvents(Array.from(new Set(evs)));
+      setAssignedWarehouses([]);
+    } else {
+      setAssignedWarehouses(Array.from(new Set(whs)));
+      setAssignedEvents([]);
     }
+
+    setIsAccountActive(userToEdit.status === 'active');
+    setPassword('');
+    if (role === 'Warehouse User' || role === 'Event User') {
+      const code = (userToEdit.accessCode || userToEdit.userId || '').trim().toUpperCase();
+      if (code.startsWith('DS')) {
+        setAccessCode(code.slice(0, 5));
+      } else if (code) {
+        setAccessCode('DS' + code.replace(/[^0-9]/g, '').slice(0, 3));
+      } else {
+        setAccessCode('DS');
+      }
+    } else {
+      setAccessCode('DS');
+    }
+    setIsWarehouseDropdownOpen(false);
+    setIsEventDropdownOpen(false);
+    setActiveModal('standardForm');
   };
 
-  // Delete User with safeguard
-  const handleDeleteUser = () => {
-    if (!selectedUser) return;
-    if (selectedUser.id === 'USR-001' || selectedUser.userId === 'ADM-001') {
-      Alert.alert('Restricted Action', 'Never allow deletion of the last Super Admin.');
-      return;
-    }
+  // Toggle user activation/deactivation with short confirmation popup
+  const handleToggleActiveStatusWithConfirm = (u) => {
+    const targetUser = u || selectedUser;
+    if (!targetUser) return;
+    setActiveModal(null);
+    const isActivating = targetUser.status !== 'active';
+    const actionWord = isActivating ? 'Activate' : 'Deactivate';
 
     Alert.alert(
-      'Confirm Deletion',
-      `Are you sure you want to delete ${selectedUser.name}? This action will permanently remove account access.`,
+      `${actionWord} User`,
+      `Are you sure you want to ${actionWord.toLowerCase()} ${targetUser.name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete User',
-          style: 'destructive',
+          text: actionWord,
+          style: isActivating ? 'default' : 'destructive',
           onPress: () => {
-            const res = authService.deleteUser(selectedUser.id);
+            const res = authService.toggleUserStatus(targetUser.id);
             if (res.success) {
               refreshUsers();
-              setActiveModal(null);
-              Alert.alert('Deleted', 'User account removed from system.');
             }
           },
         },
@@ -187,21 +259,99 @@ export default function UserSetupTabScreen({ session, onLogout }) {
     );
   };
 
-  // Toggle location assignment chip
-  const handleToggleLocation = (loc) => {
-    if (assignedLocations.includes(loc)) {
-      if (assignedLocations.length > 1) {
-        setAssignedLocations(assignedLocations.filter((l) => l !== loc));
-      } else {
-        Alert.alert('Notice', 'At least one location must remain assigned.');
-      }
-    } else {
-      setAssignedLocations([...assignedLocations, loc]);
+  // Delete User with short confirmation popup
+  const handleDeleteUserWithConfirm = (u) => {
+    const targetUser = u || selectedUser;
+    if (!targetUser) return;
+    setActiveModal(null);
+    if (isSelectedUserSuperAdmin(targetUser)) {
+      Alert.alert('Restricted', 'Super Admin cannot be deleted.');
+      return;
     }
+
+    Alert.alert(
+      'Delete User',
+      `Are you sure you want to delete ${targetUser.name}? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            const res = authService.deleteUser(targetUser.id);
+            if (res.success) {
+              refreshUsers();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleToggleActiveStatus = (u) => handleToggleActiveStatusWithConfirm(u || selectedUser);
+  const handleDeleteUser = (u) => handleDeleteUserWithConfirm(u || selectedUser);
+
+  // Get full list of available warehouses (ONLY active ones created from masterService)
+  const getAvailableWarehouses = () => {
+    return masterService
+      .getWarehouses()
+      .filter((w) => (w.status || 'active').toLowerCase() === 'active')
+      .map((w) => ({
+        id: String(w.id || w.code || w.name),
+        name: w.name || w.code || String(w.id),
+        code: w.code || '',
+        city: w.city || '',
+        type: 'Warehouse',
+      }));
+  };
+
+  // Get full list of available events (ONLY active ones created from masterService)
+  const getAvailableEvents = () => {
+    return masterService
+      .getEvents()
+      .filter((e) => (e.status || 'active').toLowerCase() === 'active')
+      .map((e) => ({
+        id: String(e.id || e.code || e.name),
+        name: e.name || e.code || String(e.id),
+        code: e.code || '',
+        city: e.city || e.venue || '',
+        type: 'Event',
+      }));
+  };
+
+  // Toggle single warehouse selection (must exist in master to add; always removable)
+  const handleToggleWarehouse = (whName) => {
+    if (assignedWarehouses.includes(whName)) {
+      setAssignedWarehouses(assignedWarehouses.filter((w) => w !== whName));
+      return;
+    }
+    const allWhs = masterService.getWarehouses();
+    const exists = allWhs.some(
+      (w) => (w.name || w.code || String(w.id)).toLowerCase() === String(whName).toLowerCase()
+    );
+    if (!exists && allWhs.length > 0) return;
+    setAssignedWarehouses([...assignedWarehouses, whName]);
+  };
+
+  // Toggle single event selection (must exist in master to add; always removable)
+  const handleToggleEvent = (evName) => {
+    if (assignedEvents.includes(evName)) {
+      setAssignedEvents(assignedEvents.filter((e) => e !== evName));
+      return;
+    }
+    const allEvs = masterService.getEvents();
+    const exists = allEvs.some(
+      (e) => (e.name || e.code || String(e.id)).toLowerCase() === String(evName).toLowerCase()
+    );
+    if (!exists && allEvs.length > 0) return;
+    setAssignedEvents([...assignedEvents, evName]);
   };
 
   // Save Standard User (Screen 03)
-  const handleSaveStandardUser = () => {
+  // Save Standard User (Screen 03)
+  const handleSaveStandardUser = async () => {
+    const isGroundRole = selectedRole === 'Warehouse User' || selectedRole === 'Event User';
+
     if (!fullName.trim()) {
       setFormError('Please enter Full Name.');
       return;
@@ -210,74 +360,320 @@ export default function UserSetupTabScreen({ session, onLogout }) {
       setFormError('Please enter Phone Number.');
       return;
     }
-    if (!emailId.trim()) {
-      setFormError('Please enter Email ID.');
-      return;
+
+    let finalAccessCode = '';
+    if (isGroundRole) {
+      const digits = (accessCode || '').replace(/^DS/i, '').replace(/[^0-9]/g, '');
+      if (digits.length !== 3) {
+        setFormError('Please enter a 3-digit number after DS (e.g. DS101).');
+        return;
+      }
+      finalAccessCode = `DS${digits}`;
+      const targetUserId = isEditMode && selectedUser ? (selectedUser.id || selectedUser.userId) : null;
+      if (authService.isAccessCodeTaken(finalAccessCode, targetUserId)) {
+        setFormError(`Access Code ${finalAccessCode} already exists! Please enter a different 3-digit number.`);
+        return;
+      }
+    } else {
+      if (!emailId.trim()) {
+        setFormError('Please enter Email ID.');
+        return;
+      }
+      if (!isEditMode && !password.trim()) {
+        setFormError('Please enter a Password.');
+        return;
+      }
     }
 
     setFormError('');
+    const isWarehouseScoped =
+      selectedRole === 'Admin' ||
+      selectedRole === 'Operation Manager' ||
+      selectedRole === 'Operations Manager' ||
+      selectedRole === 'Warehouse User';
 
-    if (isEditMode && selectedUser) {
-      authService.updateUser(selectedUser.id, {
-        name: fullName.trim(),
-        mobile: `+91 ${phoneNumber.trim()}`,
-        email: emailId.trim(),
-        role: selectedRole,
-        assignedLocations,
-        status: isAccountActive ? 'active' : 'inactive',
-      });
-      refreshUsers();
+    let finalLocations = isWarehouseScoped
+      ? Array.from(new Set(assignedWarehouses))
+      : Array.from(new Set(assignedEvents));
+
+    // Admin accounts always include all active warehouses created in Master tab
+    if (selectedRole === 'Admin') {
+      const activeWhNames = masterService
+        .getWarehouses()
+        .filter((w) => (w.status || 'active').toLowerCase() === 'active')
+        .map((w) => w.name);
+      finalLocations = Array.from(new Set([...finalLocations, ...activeWhNames]));
+    }
+
+    // Event Planner accounts always include all active events created in Master tab
+    if (selectedRole === 'Event Planner') {
+      const activeEvNames = masterService
+        .getEvents()
+        .filter((e) => (e.status || 'active').toLowerCase() === 'active')
+        .map((e) => e.name);
+      finalLocations = Array.from(new Set([...finalLocations, ...activeEvNames]));
+    }
+
+    const targetUserId = selectedUser?.id || selectedUser?.userId || selectedUser?.email;
+
+    const userPayload = isGroundRole
+      ? {
+          name: fullName.trim(),
+          mobile: `+91 ${phoneNumber.trim()}`,
+          userId: finalAccessCode,
+          accessCode: finalAccessCode,
+          email: `${finalAccessCode.toLowerCase()}@district.com`,
+          role: selectedRole,
+          assignedLocations: finalLocations,
+          status: isAccountActive ? 'active' : 'inactive',
+        }
+      : {
+          name: fullName.trim(),
+          mobile: `+91 ${phoneNumber.trim()}`,
+          email: emailId.trim(),
+          role: selectedRole,
+          assignedLocations: finalLocations,
+          status: isAccountActive ? 'active' : 'inactive',
+          ...(password ? { password: password.trim() } : {}),
+        };
+
+    if (isEditMode && targetUserId) {
+      const res = await authService.updateUser(targetUserId, userPayload);
+      if (!res.success) {
+        setFormError(res.error || 'Failed to update user.');
+        return;
+      }
+      await refreshUsers();
       setActiveModal(null);
       Alert.alert('Success', 'User profile updated successfully.');
     } else {
-      authService.addUser({
-        name: fullName.trim(),
-        mobile: `+91 ${phoneNumber.trim()}`,
-        email: emailId.trim(),
-        role: selectedRole,
-        assignedLocations,
-        status: isAccountActive ? 'active' : 'inactive',
-      });
-      refreshUsers();
+      const res = await authService.addUser(userPayload);
+      if (!res.success) {
+        setFormError(res.error || 'Failed to create user.');
+        return;
+      }
+      await refreshUsers();
       setActiveModal(null);
-      Alert.alert('Success', `${selectedRole} account created successfully.`);
+      Alert.alert(
+        'Success',
+        isGroundRole
+          ? `${selectedRole} created successfully with Access Code: ${finalAccessCode}`
+          : `${selectedRole} account created successfully.`
+      );
     }
   };
 
   // Save Ground User (Screen 04)
-  const handleSaveGroundUser = () => {
+  const handleSaveGroundUser = async () => {
     if (!fullName.trim()) {
       setFormError('Please enter Full Name.');
       return;
     }
 
     setFormError('');
-    const finalRole = groundType === 'Warehouse Ground' ? 'Warehouse Ground User' : 'Event Ground User';
+    const finalRole = groundType === 'Warehouse Ground' ? 'Warehouse User' : 'Event User';
+    const combinedLocations = Array.from(new Set([...assignedWarehouses, ...assignedEvents]));
+    const targetUserId = selectedUser?.id || selectedUser?.userId || selectedUser?.email;
 
-    if (isEditMode && selectedUser) {
-      authService.updateUser(selectedUser.id, {
+    if (isEditMode && targetUserId) {
+      await authService.updateUser(targetUserId, {
         name: fullName.trim(),
         userId: accessId.trim(),
+        accessCode: accessId.trim(),
         role: finalRole,
-        assignedLocations,
+        assignedLocations: combinedLocations,
         status: isAccountActive ? 'active' : 'inactive',
       });
-      refreshUsers();
+      await refreshUsers();
       setActiveModal(null);
       Alert.alert('Success', 'Ground user updated successfully.');
     } else {
-      authService.addUser({
+      await authService.addUser({
         name: fullName.trim(),
         userId: accessId.trim(),
+        accessCode: accessId.trim(),
         role: finalRole,
-        assignedLocations,
+        assignedLocations: combinedLocations,
         status: isAccountActive ? 'active' : 'inactive',
       });
-      refreshUsers();
+      await refreshUsers();
       setActiveModal(null);
       Alert.alert('Success', `Ground User created with Access ID: ${accessId}`);
     }
   };
+
+  // Dropdown Location Selector matching the user's reference format:
+  // Red asterisk: * Storage Warehouse / * Event Location
+  // Dropdown input box with placeholder and caret icon
+  // Multi-select dropdown list with checkbox next to each real Master location name
+  // ZERO mock data; dynamic from masterService
+  const renderDropdownLocationSelector = (type) => {
+    const isWh = type === 'warehouse';
+    const isOpen = isWh ? isWarehouseDropdownOpen : isEventDropdownOpen;
+    const setIsOpen = isWh ? setIsWarehouseDropdownOpen : setIsEventDropdownOpen;
+    const title = isWh ? 'Storage Warehouse' : 'Event Location';
+    const placeholder = isWh ? 'Storage Warehouse' : 'Event Location';
+    const available = isWh ? getAvailableWarehouses() : getAvailableEvents();
+    const selected = isWh ? assignedWarehouses : assignedEvents;
+
+    const handleToggle = (name) => {
+      if (isWh) {
+        handleToggleWarehouse(name);
+      } else {
+        handleToggleEvent(name);
+      }
+    };
+
+    const handleSelectAll = () => {
+      const allNames = available.map((a) => a.name);
+      if (isWh) {
+        setAssignedWarehouses(allNames);
+      } else {
+        setAssignedEvents(allNames);
+      }
+    };
+
+    const handleClearAll = () => {
+      if (isWh) {
+        setAssignedWarehouses([]);
+      } else {
+        setAssignedEvents([]);
+      }
+    };
+
+    let displayText = '';
+    if (selected.length === 0) {
+      displayText = placeholder;
+    } else if (selected.length === 1) {
+      displayText = selected[0];
+    } else {
+      displayText = `${selected.length} Selected (${selected.join(', ')})`;
+    }
+
+    return (
+      <View style={styles.locDropdownWrapper}>
+        {/* Label: * Storage Warehouse (Red asterisk like user screenshot) */}
+        <View style={styles.locDropdownLabelRow}>
+          <Text style={styles.locDropdownRequiredStar}>* </Text>
+          <Text style={styles.locDropdownLabelText}>{title}</Text>
+          {selected.length > 0 && (
+            <View style={styles.locDropdownCountPill}>
+              <Text style={styles.locDropdownCountPillText}>
+                {selected.length} Selected
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Input Trigger Box */}
+        <TouchableOpacity
+          style={[
+            styles.locDropdownTriggerBox,
+            isOpen && styles.locDropdownTriggerBoxOpen,
+          ]}
+          onPress={() => setIsOpen(!isOpen)}
+          activeOpacity={0.8}
+        >
+          <Text
+            style={[
+              styles.locDropdownTriggerText,
+              selected.length === 0 && styles.locDropdownPlaceholderText,
+            ]}
+            numberOfLines={1}
+          >
+            {displayText}
+          </Text>
+          <Ionicons
+            name={isOpen ? 'caret-up' : 'caret-down'}
+            size={14}
+            color={isOpen ? '#2563EB' : '#6B7280'}
+          />
+        </TouchableOpacity>
+
+        {/* Dropdown Menu Card (Only visible when isOpen is true) */}
+        {isOpen && (
+          <View style={styles.locDropdownMenuCard}>
+            {/* Quick Actions Header */}
+            {available.length > 0 && (
+              <View style={styles.locDropdownCardHeader}>
+                <Text style={styles.locDropdownAvailableCount}>
+                  {available.length} available in Master
+                </Text>
+                <View style={styles.locDropdownHeaderActions}>
+                  {selected.length < available.length && (
+                    <TouchableOpacity onPress={handleSelectAll} style={styles.locQuickBtn}>
+                      <Text style={styles.locQuickBtnText}>Select All</Text>
+                    </TouchableOpacity>
+                  )}
+                  {selected.length > 0 && (
+                    <TouchableOpacity onPress={handleClearAll} style={[styles.locQuickBtn, { marginLeft: 8 }]}>
+                      <Text style={[styles.locQuickBtnText, { color: '#EF4444' }]}>Clear</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* Scrollable List with Checkboxes */}
+            <ScrollView
+              style={styles.locDropdownScroll}
+              nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {available.length === 0 ? (
+                <View style={styles.locDropdownEmptyBox}>
+                  <Ionicons name="information-circle-outline" size={16} color="#9CA3AF" />
+                  <Text style={styles.locDropdownEmptyText}>
+                    No {isWh ? 'warehouses' : 'events'} found in Master. Create one in Master tab first.
+                  </Text>
+                </View>
+              ) : (
+                available.map((item) => {
+                  const isChecked = selected.includes(item.name);
+                  return (
+                    <TouchableOpacity
+                      key={item.id || item.name}
+                      style={[
+                        styles.locDropdownItemRow,
+                        isChecked && styles.locDropdownItemRowActive,
+                      ]}
+                      onPress={() => handleToggle(item.name)}
+                      activeOpacity={0.7}
+                    >
+                      {/* Checkbox box with checkmark */}
+                      <View style={[styles.locCheckbox, isChecked && styles.locCheckboxChecked]}>
+                        {isChecked && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
+                      </View>
+
+                      {/* Name of Warehouse / Event */}
+                      <Text
+                        style={[
+                          styles.locDropdownItemName,
+                          isChecked && styles.locDropdownItemNameChecked,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.name}
+                      </Text>
+
+                      {/* Optional location info (City/Code) */}
+                      {item.city ? (
+                        <Text style={styles.locDropdownItemCity} numberOfLines={1}>
+                          {item.city}
+                        </Text>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderCompactLocationSelector = renderDropdownLocationSelector;
 
   // Helper for initial avatar letter
   const getInitial = (name) => {
@@ -287,48 +683,18 @@ export default function UserSetupTabScreen({ session, onLogout }) {
 
   return (
     <View style={styles.container}>
-      {/* ========================================================= */}
-      {/* SCREEN 01: USER LIST (MAIN SCREEN)                        */}
-      {/* ========================================================= */}
-      {/* Top Navy Gradient Header matching Figma SVG Screen 01 */}
-      <View style={styles.navyHeader}>
-        {/* Admin Role Badge & Logout */}
-        <View style={styles.headerTopRow}>
-          <View style={styles.adminBadge}>
-            <View style={styles.greenDot} />
-            <Text style={styles.adminBadgeText}>Admin</Text>
-          </View>
-
-          {onLogout && (
-            <TouchableOpacity onPress={onLogout} style={styles.logoutBtn} activeOpacity={0.75}>
-              <Ionicons name="log-out-outline" size={15} color="#D8B4FE" />
-              <Text style={styles.logoutBtnText}>Logout</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Title & Subtitle */}
-        <Text style={styles.headerTitle}>User Setup</Text>
-        <Text style={styles.headerSubtitle}>Manage users and access</Text>
-
-        {/* 3 Metrics Cards (TOTAL USERS, ACTIVE, INACTIVE) */}
-        <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>TOTAL USERS</Text>
-            <Text style={styles.metricVal}>{metrics.total}</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>ACTIVE</Text>
-            <Text style={styles.metricVal}>{metrics.active}</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>INACTIVE</Text>
-            <Text style={styles.metricVal}>{metrics.inactive}</Text>
-          </View>
+      {/* 1. USER SETUP SUB-HEADER BANNER (ON WHITE PART UNDER TOP BLUE HEADER - EXACT SAME AS DASHBOARD) */}
+      <View style={styles.whiteDashboardHeader}>
+        <Text style={styles.headerUserSetupTitle}>User Setup</Text>
+        <View style={styles.scopeRow}>
+          <View style={styles.scopeDot} />
+          <Text style={styles.scopeSubText}>
+            Manage team access & warehouse permissions
+          </Text>
         </View>
       </View>
 
-      {/* Main List Area */}
+      {/* Main List Area (Clean White Page directly under Top Header) */}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
         {/* Search Bar */}
         <View style={styles.searchBar}>
@@ -405,7 +771,7 @@ export default function UserSetupTabScreen({ session, onLogout }) {
             const isActive = user.status === 'active';
             const initial = getInitial(user.name);
             const displayId = user.userId || user.id || 'WHG-0001';
-            const roleShort = user.role.replace(' User', '');
+            const displayRole = user.role || 'Warehouse User';
 
             return (
               <View key={user.id || user.userId} style={styles.userCard}>
@@ -420,7 +786,7 @@ export default function UserSetupTabScreen({ session, onLogout }) {
                   {/* Details column */}
                   <View style={styles.cardDetailsCol}>
                     <Text style={styles.cardName}>{user.name}</Text>
-                    <Text style={styles.cardMeta}>{roleShort} · {displayId}</Text>
+                    <Text style={styles.cardMeta}>{displayRole} · {displayId}</Text>
                     <View style={styles.cardStatusRow}>
                       <View style={[styles.statusBadge, !isActive && styles.statusBadgeInactive]}>
                         <View style={[styles.statusDot, !isActive && styles.statusDotInactive]} />
@@ -491,67 +857,58 @@ export default function UserSetupTabScreen({ session, onLogout }) {
               </View>
               <View style={styles.roleCardTextCol}>
                 <Text style={styles.roleCardName}>Admin</Text>
-                <Text style={styles.roleCardDesc}>Global access</Text>
+                <Text style={styles.roleCardDesc}>Global access & full system administration</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
             </TouchableOpacity>
 
-            {/* 2. Operations Manager */}
-            <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Operations Manager')} activeOpacity={0.8}>
+            {/* 2. Operation Manager */}
+            <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Operation Manager')} activeOpacity={0.8}>
               <View style={[styles.roleAvatar, { backgroundColor: '#F0E8FF' }]}>
                 <Text style={[styles.roleAvatarLetter, { color: '#8244EF' }]}>O</Text>
               </View>
               <View style={styles.roleCardTextCol}>
-                <Text style={styles.roleCardName}>Operations Manager</Text>
-                <Text style={styles.roleCardDesc}>Authorized warehouse scope</Text>
+                <Text style={styles.roleCardName}>Operation Manager</Text>
+                <Text style={styles.roleCardDesc}>Authorized warehouse operations & setup</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
             </TouchableOpacity>
 
-            {/* 3. Event Planner */}
+            {/* 3. Warehouse User */}
+            <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Warehouse User')} activeOpacity={0.8}>
+              <View style={[styles.roleAvatar, { backgroundColor: '#E5FAF3' }]}>
+                <Text style={[styles.roleAvatarLetter, { color: '#159A79' }]}>W</Text>
+              </View>
+              <View style={styles.roleCardTextCol}>
+                <Text style={styles.roleCardName}>Warehouse User</Text>
+                <Text style={styles.roleCardDesc}>Warehouse inventory & stock movement</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
+            </TouchableOpacity>
+
+            {/* 4. Event User */}
+            <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Event User')} activeOpacity={0.8}>
+              <View style={[styles.roleAvatar, { backgroundColor: '#E5FAF3' }]}>
+                <Text style={[styles.roleAvatarLetter, { color: '#159A79' }]}>E</Text>
+              </View>
+              <View style={styles.roleCardTextCol}>
+                <Text style={styles.roleCardName}>Event User</Text>
+                <Text style={styles.roleCardDesc}>Event site inventory & stock movement</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
+            </TouchableOpacity>
+
+            {/* 5. Event Planner */}
             <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Event Planner')} activeOpacity={0.8}>
               <View style={[styles.roleAvatar, { backgroundColor: '#FFF0D9' }]}>
-                <Text style={[styles.roleAvatarLetter, { color: '#D28A22' }]}>E</Text>
+                <Text style={[styles.roleAvatarLetter, { color: '#D28A22' }]}>P</Text>
               </View>
               <View style={styles.roleCardTextCol}>
                 <Text style={styles.roleCardName}>Event Planner</Text>
-                <Text style={styles.roleCardDesc}>Assigned event scope</Text>
+                <Text style={styles.roleCardDesc}>Assigned event scope & requisitions</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
             </TouchableOpacity>
-
-            {/* 4. Ground User (Split sub-options) */}
-            <View style={styles.groundSelectCard}>
-              <View style={styles.groundSelectTopRow}>
-                <View style={[styles.roleAvatar, { backgroundColor: '#E5FAF3' }]}>
-                  <Text style={[styles.roleAvatarLetter, { color: '#159A79' }]}>G</Text>
-                </View>
-                <View style={styles.roleCardTextCol}>
-                  <Text style={styles.roleCardName}>Ground User</Text>
-                  <Text style={styles.roleCardDesc}>Choose ground user type</Text>
-                </View>
-              </View>
-
-              <View style={styles.groundSubOptionsRow}>
-                <TouchableOpacity
-                  style={styles.groundSubBtn}
-                  onPress={() => handleSelectRole('Ground User', 'Warehouse Ground')}
-                  activeOpacity={0.75}
-                >
-                  <Text style={styles.groundSubBtnTitle}>Warehouse Ground</Text>
-                  <Text style={styles.groundSubBtnSub}>Warehouse assignment</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.groundSubBtn}
-                  onPress={() => handleSelectRole('Ground User', 'Event Ground')}
-                  activeOpacity={0.75}
-                >
-                  <Text style={styles.groundSubBtnTitle}>Event Ground</Text>
-                  <Text style={styles.groundSubBtnSub}>Event assignment</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
           </ScrollView>
         </View>
       </Modal>
@@ -581,64 +938,105 @@ export default function UserSetupTabScreen({ session, onLogout }) {
 
             <Text style={styles.formSectHeader}>Personal & login details</Text>
 
-            <Text style={styles.formInputLabel}>Full Name *</Text>
+            <Text style={styles.formInputLabel}>
+              Full Name <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+            </Text>
             <View style={styles.inputContainer}>
               <TextInput style={styles.textInput} placeholder="Enter full name" placeholderTextColor="#9AA3B4" value={fullName} onChangeText={setFullName} />
             </View>
 
-            <Text style={styles.formInputLabel}>Phone Number *</Text>
+            <Text style={styles.formInputLabel}>
+              Phone Number <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+            </Text>
             <View style={styles.inputContainer}>
               <Text style={styles.inputPrefix}>+91 </Text>
               <TextInput style={styles.textInput} placeholder="Enter mobile number" placeholderTextColor="#9AA3B4" keyboardType="phone-pad" value={phoneNumber} onChangeText={setPhoneNumber} />
             </View>
 
-            <Text style={styles.formInputLabel}>Email ID *</Text>
-            <View style={styles.inputContainer}>
-              <TextInput style={styles.textInput} placeholder="name@company.com" placeholderTextColor="#9AA3B4" keyboardType="email-address" autoCapitalize="none" value={emailId} onChangeText={setEmailId} />
-            </View>
-
-            {!isEditMode && (
+            {selectedRole === 'Warehouse User' || selectedRole === 'Event User' ? (
               <>
-                <Text style={styles.formInputLabel}>Password *</Text>
-                <View style={styles.inputContainer}>
-                  <TextInput style={styles.textInput} placeholder="Set a secure password" placeholderTextColor="#9AA3B4" secureTextEntry={!showPassword} value={password} onChangeText={setPassword} />
-                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#9AA3B4" />
-                  </TouchableOpacity>
+                <Text style={styles.formInputLabel}>
+                  Access Code <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+                </Text>
+                <View style={styles.accessCodeFieldWrapper}>
+                  <View style={styles.accessCodePrefixPill}>
+                    <Text style={styles.accessCodePrefixPillText}>DS</Text>
+                  </View>
+                  <TextInput
+                    style={styles.accessCodeNumberInput}
+                    placeholder="101"
+                    placeholderTextColor="#9AA3B4"
+                    keyboardType="number-pad"
+                    maxLength={3}
+                    value={accessCode.replace(/^DS/i, '')}
+                    onChangeText={(val) => {
+                      const digits = val.replace(/[^0-9]/g, '').slice(0, 3);
+                      setAccessCode('DS' + digits);
+                      setFormError('');
+                    }}
+                  />
+                  <View style={styles.accessCodeTagPill}>
+                    <Text style={styles.accessCodeTagPillText}>3 Digits</Text>
+                  </View>
                 </View>
+                <Text style={styles.accessCodeHelperText}>
+                  Enter a unique 3-digit number after DS (e.g. DS101, DS002)
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.formInputLabel}>
+                  Email ID <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+                </Text>
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="name@company.com"
+                    placeholderTextColor="#9AA3B4"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={emailId}
+                    onChangeText={setEmailId}
+                  />
+                </View>
+
+                {!isEditMode && (
+                  <>
+                    <Text style={styles.formInputLabel}>
+                      Password <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="Set a secure password"
+                        placeholderTextColor="#9AA3B4"
+                        secureTextEntry={!showPassword}
+                        value={password}
+                        onChangeText={setPassword}
+                      />
+                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                        <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#9AA3B4" />
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
               </>
             )}
 
-            <Text style={styles.formSectHeader}>Role & assignments</Text>
+            <Text style={styles.formSectHeader}>Location assignments</Text>
+            {/* Show Warehouse Assignment for Admin, Operation Manager, and Warehouse User */}
+            {(selectedRole === 'Admin' ||
+              selectedRole === 'Operation Manager' ||
+              selectedRole === 'Operations Manager' ||
+              selectedRole === 'Warehouse User') && (
+              renderCompactLocationSelector('warehouse')
+            )}
 
-            <Text style={styles.formInputLabel}>User Role *</Text>
-            <View style={[styles.inputContainer, { backgroundColor: '#F8F6FD' }]}>
-              <Text style={styles.lockedRoleText}>{selectedRole}</Text>
-            </View>
-
-            <Text style={styles.formInputLabel}>
-              {selectedRole === 'Event Planner' ? 'Assign Event(s) *' : 'Assign Warehouse(s) *'}
-            </Text>
-
-            {/* Selected Chips with × */}
-            <View style={styles.chipsRow}>
-              {assignedLocations.map((loc) => (
-                <TouchableOpacity key={loc} style={styles.locationChip} onPress={() => handleToggleLocation(loc)}>
-                  <Text style={styles.locationChipText}>{loc} ×</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Add More Locations */}
-            <View style={styles.chipsRow}>
-              {(selectedRole === 'Event Planner' ? EVENT_LIST : WAREHOUSE_LIST)
-                .filter((l) => !assignedLocations.includes(l))
-                .map((loc) => (
-                  <TouchableOpacity key={loc} style={styles.addLocationChip} onPress={() => handleToggleLocation(loc)}>
-                    <Text style={styles.addLocationChipText}>+ {loc}</Text>
-                  </TouchableOpacity>
-                ))}
-            </View>
+            {/* Show Event Assignment for Event User and Event Planner */}
+            {(selectedRole === 'Event User' ||
+              selectedRole === 'Event Planner') && (
+              renderCompactLocationSelector('event')
+            )}
 
             <Text style={styles.formInputLabel}>Account Status</Text>
             <View style={styles.statusToggleRow}>
@@ -694,10 +1092,7 @@ export default function UserSetupTabScreen({ session, onLogout }) {
             <View style={styles.groundTypeSelector}>
               <TouchableOpacity
                 style={[styles.groundTypeCard, groundType === 'Warehouse Ground' && styles.groundTypeCardActive]}
-                onPress={() => {
-                  setGroundType('Warehouse Ground');
-                  setAssignedLocations(['Warehouse A']);
-                }}
+                onPress={() => setGroundType('Warehouse Ground')}
               >
                 <View style={[styles.radioCircle, groundType === 'Warehouse Ground' && styles.radioCircleActive]} />
                 <View>
@@ -708,10 +1103,7 @@ export default function UserSetupTabScreen({ session, onLogout }) {
 
               <TouchableOpacity
                 style={[styles.groundTypeCard, groundType === 'Event Ground' && styles.groundTypeCardActive]}
-                onPress={() => {
-                  setGroundType('Event Ground');
-                  setAssignedLocations(['Event A']);
-                }}
+                onPress={() => setGroundType('Event Ground')}
               >
                 <View style={[styles.radioCircle, groundType === 'Event Ground' && styles.radioCircleActive]} />
                 <View>
@@ -723,12 +1115,16 @@ export default function UserSetupTabScreen({ session, onLogout }) {
 
             <Text style={styles.formSectHeader}>User details</Text>
 
-            <Text style={styles.formInputLabel}>Full Name *</Text>
+            <Text style={styles.formInputLabel}>
+              Full Name <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+            </Text>
             <View style={styles.inputContainer}>
               <TextInput style={styles.textInput} placeholder="Enter full name" placeholderTextColor="#9AA3B4" value={fullName} onChangeText={setFullName} />
             </View>
 
-            <Text style={styles.formInputLabel}>Access ID *</Text>
+            <Text style={styles.formInputLabel}>
+              Access ID <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+            </Text>
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.textInput}
@@ -745,28 +1141,9 @@ export default function UserSetupTabScreen({ session, onLogout }) {
             </View>
             <Text style={styles.fieldHint}>Generated automatically; editable by authorized creator.</Text>
 
-            <Text style={styles.formInputLabel}>
-              {groundType === 'Warehouse Ground' ? 'Assign Warehouse(s) *' : 'Assign Event(s) *'}
-            </Text>
-
-            {/* Location Chips */}
-            <View style={styles.chipsRow}>
-              {assignedLocations.map((loc) => (
-                <TouchableOpacity key={loc} style={styles.locationChip} onPress={() => handleToggleLocation(loc)}>
-                  <Text style={styles.locationChipText}>{loc} ×</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.chipsRow}>
-              {(groundType === 'Warehouse Ground' ? WAREHOUSE_LIST : EVENT_LIST)
-                .filter((l) => !assignedLocations.includes(l))
-                .map((loc) => (
-                  <TouchableOpacity key={loc} style={styles.addLocationChip} onPress={() => handleToggleLocation(loc)}>
-                    <Text style={styles.addLocationChipText}>+ {loc}</Text>
-                  </TouchableOpacity>
-                ))}
-            </View>
+            <Text style={styles.formSectHeader}>Location assignments</Text>
+            {groundType === 'Warehouse Ground' && renderCompactLocationSelector('warehouse')}
+            {groundType === 'Event Ground' && renderCompactLocationSelector('event')}
 
             <Text style={styles.formInputLabel}>Account Status</Text>
             <View style={styles.statusToggleRow}>
@@ -795,88 +1172,333 @@ export default function UserSetupTabScreen({ session, onLogout }) {
       </Modal>
 
       {/* ========================================================= */}
-      {/* SCREEN 05: THREE-DOT MENU ACTIONS SHEET                   */}
+      {/* THREE-DOT SHORT ACTIONS POPUP                             */}
       {/* ========================================================= */}
-      <Modal visible={activeModal === 'actionsMenu'} animationType="fade" transparent={true}>
-        <View style={styles.actionsBackdrop}>
-          <View style={styles.actionsSheetCard}>
+      <Modal
+        visible={activeModal === 'actionsMenu'}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setActiveModal(null)}
+      >
+        <TouchableOpacity
+          style={styles.compactActionsBackdrop}
+          activeOpacity={1}
+          onPress={() => setActiveModal(null)}
+        >
+          <View
+            style={styles.compactActionsCard}
+            onStartShouldSetResponder={() => true}
+          >
             {selectedUser && (
               <>
-                {/* User Card Summary matching SVG Screen 05 */}
-                <View style={styles.actionUserPreview}>
-                  <View style={styles.actionAvatar}>
-                    <Text style={styles.actionAvatarLetter}>{getInitial(selectedUser.name)}</Text>
-                  </View>
-                  <View style={styles.actionUserMeta}>
-                    <Text style={styles.actionUserName}>{selectedUser.name}</Text>
-                    <Text style={styles.actionUserRole}>
-                      {selectedUser.role.replace(' User', '')} · {selectedUser.userId || selectedUser.id}
+                {/* Header: User Name, Role & Close Button */}
+                <View style={styles.compactMenuHeader}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.compactMenuUserName} numberOfLines={1}>
+                      {selectedUser.name}
                     </Text>
-                    <View style={[styles.statusBadgeSmall, selectedUser.status !== 'active' && styles.statusBadgeSmallInactive]}>
-                      <View style={[styles.statusDot, selectedUser.status !== 'active' && styles.statusDotInactive]} />
-                      <Text style={[styles.statusTextSmall, selectedUser.status !== 'active' && styles.statusTextSmallInactive]}>
-                        {selectedUser.status === 'active' ? 'Active' : 'Inactive'}
-                      </Text>
-                    </View>
+                    <Text style={styles.compactMenuUserRole} numberOfLines={1}>
+                      {selectedUser.role?.replace(' User', '')} · {selectedUser.userId || selectedUser.id}
+                    </Text>
                   </View>
-                  <TouchableOpacity onPress={() => setActiveModal(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                    <Ionicons name="close" size={22} color="#FFFFFF" />
+                  <TouchableOpacity
+                    onPress={() => setActiveModal(null)}
+                    style={styles.compactCloseBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="close" size={18} color="#6B7280" />
                   </TouchableOpacity>
                 </View>
 
-                <Text style={styles.menuLabel}>THREE-DOT MENU · USER ACTIONS</Text>
+                <View style={styles.compactMenuDivider} />
 
-                {/* 1. Edit User */}
-                <TouchableOpacity style={styles.menuActionItem} onPress={handleEditFromActionMenu}>
-                  <View style={[styles.menuActionIconCircle, { backgroundColor: '#F0E8FF' }]}>
-                    <MaterialCommunityIcons name="pencil-outline" size={18} color="#8244EF" />
+                {/* Option 1: Edit */}
+                <TouchableOpacity
+                  style={styles.compactMenuItem}
+                  onPress={handleEditFromActionMenu}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.compactMenuIconBox, { backgroundColor: '#F3EEFF' }]}>
+                    <MaterialCommunityIcons name="pencil-outline" size={18} color="#8235F4" />
                   </View>
-                  <View style={styles.menuActionTextCol}>
-                    <Text style={styles.menuActionTitle}>Edit User</Text>
-                    <Text style={styles.menuActionSub}>Update details and assignments</Text>
-                  </View>
+                  <Text style={styles.compactMenuItemText}>Edit</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
                 </TouchableOpacity>
 
-                {/* 2. Activate / Deactivate */}
-                <TouchableOpacity style={styles.menuActionItem} onPress={handleToggleActiveStatus}>
-                  <View style={[styles.menuActionIconCircle, { backgroundColor: selectedUser.status === 'active' ? '#FFE8EC' : '#E5FAF3' }]}>
+                {/* Option 2: Deactivate / Activate */}
+                <TouchableOpacity
+                  style={styles.compactMenuItem}
+                  onPress={() => handleToggleActiveStatusWithConfirm(selectedUser)}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.compactMenuIconBox,
+                      {
+                        backgroundColor:
+                          selectedUser.status === 'active' ? '#FEF2F2' : '#ECFDF5',
+                      },
+                    ]}
+                  >
                     <Ionicons
-                      name={selectedUser.status === 'active' ? 'pause-circle-outline' : 'checkmark-circle-outline'}
+                      name={
+                        selectedUser.status === 'active'
+                          ? 'pause-circle-outline'
+                          : 'checkmark-circle-outline'
+                      }
                       size={18}
-                      color={selectedUser.status === 'active' ? '#D9485F' : '#159A79'}
+                      color={
+                        selectedUser.status === 'active' ? '#EF4444' : '#10B981'
+                      }
                     />
                   </View>
-                  <View style={styles.menuActionTextCol}>
-                    <Text style={styles.menuActionTitle}>
-                      {selectedUser.status === 'active' ? 'Deactivate User' : 'Activate User'}
+                  <Text
+                    style={[
+                      styles.compactMenuItemText,
+                      selectedUser.status !== 'active' && { color: '#059669' },
+                    ]}
+                  >
+                    {selectedUser.status === 'active' ? 'Deactivate' : 'Activate'}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+                </TouchableOpacity>
+
+                {/* Option 3: Delete (Super Admin cannot be deleted) */}
+                {!isSelectedUserSuperAdmin(selectedUser) && (
+                  <TouchableOpacity
+                    style={styles.compactMenuItem}
+                    onPress={() => handleDeleteUserWithConfirm(selectedUser)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.compactMenuIconBox, { backgroundColor: '#FEE2E2' }]}>
+                      <MaterialCommunityIcons name="trash-can-outline" size={18} color="#DC2626" />
+                    </View>
+                    <Text style={[styles.compactMenuItemText, { color: '#DC2626', fontWeight: '700' }]}>
+                      Delete
                     </Text>
-                    <Text style={styles.menuActionSub}>One status action; label changes with current status</Text>
-                  </View>
-                </TouchableOpacity>
+                    <Ionicons name="chevron-forward" size={16} color="#FCA5A5" />
+                  </TouchableOpacity>
+                )}
 
-                {/* 3. Delete User */}
-                <TouchableOpacity style={styles.menuActionItem} onPress={handleDeleteUser}>
-                  <View style={[styles.menuActionIconCircle, { backgroundColor: '#FFE8EC' }]}>
-                    <MaterialCommunityIcons name="trash-can-outline" size={18} color="#D9485F" />
-                  </View>
-                  <View style={styles.menuActionTextCol}>
-                    <Text style={[styles.menuActionTitle, { color: '#C43E52' }]}>Delete User</Text>
-                    <Text style={styles.menuActionSub}>Confirm first; preserve audit/transaction history</Text>
-                  </View>
+                {/* Cancel Button */}
+                <TouchableOpacity
+                  style={styles.compactCancelBtn}
+                  onPress={() => setActiveModal(null)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.compactCancelText}>Cancel</Text>
                 </TouchableOpacity>
-
-                {/* Market Standard Safeguards Card matching SVG Screen 05 */}
-                <View style={styles.safeguardsCard}>
-                  <Text style={styles.safeguardsTitle}>Market-standard safeguards</Text>
-                  <Text style={styles.safeguardsBullet}>• Never allow deletion of the last Super Admin.</Text>
-                  <Text style={styles.safeguardsBullet}>• Preserve inventory and audit history.</Text>
-                  <Text style={styles.safeguardsBullet}>• Deactivate accounts with transaction history.</Text>
-                  <Text style={styles.safeguardsBullet}>• Confirm destructive actions in a dialog.</Text>
-                </View>
               </>
             )}
           </View>
-        </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ========================================================= */}
+      {/* SMART SEARCHABLE MULTI-SELECT LOCATION PICKER MODAL       */}
+      {/* Handles 500+ Warehouses or Events efficiently             */}
+      {/* ========================================================= */}
+      <Modal
+        visible={locationPickerType !== null}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setLocationPickerType(null)}
+      >
+        {(() => {
+          const isWh = locationPickerType === 'warehouse';
+          const title = isWh ? 'Assign Warehouses' : 'Assign Events';
+          const available = isWh ? getAvailableWarehouses() : getAvailableEvents();
+          const selected = isWh ? assignedWarehouses : assignedEvents;
+          const themeGradient = isWh ? ['#8235F4', '#5E22BF'] : ['#0D9488', '#0F766E'];
+          const themeColor = isWh ? '#8235F4' : '#0D9488';
+          const themeBg = isWh ? '#F4F0FF' : '#E6F8F6';
+          const themeBorder = isWh ? '#E5DCFC' : '#CEF0EB';
+          const iconName = isWh ? 'warehouse' : 'calendar-star';
+
+          const filtered = available.filter((item) => {
+            if (!pickerSearchQuery.trim()) return true;
+            const q = pickerSearchQuery.toLowerCase().trim();
+            return (
+              (item.name || '').toLowerCase().includes(q) ||
+              (item.code || '').toLowerCase().includes(q) ||
+              (item.city || '').toLowerCase().includes(q)
+            );
+          });
+
+          const handleSelectAllFiltered = () => {
+            const namesToSelect = filtered.map((item) => item.name);
+            if (isWh) {
+              setAssignedWarehouses(Array.from(new Set([...assignedWarehouses, ...namesToSelect])));
+            } else {
+              setAssignedEvents(Array.from(new Set([...assignedEvents, ...namesToSelect])));
+            }
+          };
+
+          const handleClearAll = () => {
+            if (isWh) {
+              setAssignedWarehouses([]);
+            } else {
+              setAssignedEvents([]);
+            }
+          };
+
+          return (
+            <View style={styles.locModalRoot}>
+              {/* Header */}
+              <LinearGradient colors={themeGradient} style={styles.locModalHeader}>
+                <View style={styles.locModalHeaderLeft}>
+                  <TouchableOpacity
+                    onPress={() => setLocationPickerType(null)}
+                    style={styles.locModalBackBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+                  </TouchableOpacity>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.locModalTitle}>{title}</Text>
+                    <Text style={styles.locModalSub}>
+                      {selected.length} selected · {available.length} in Master
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.locModalHeaderDoneBtn}
+                  onPress={() => setLocationPickerType(null)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.locModalHeaderDoneText, { color: themeColor }]}>Done</Text>
+                </TouchableOpacity>
+              </LinearGradient>
+
+              {/* Instant Search Bar (Only shown if Master has locations) */}
+              {available.length > 0 && (
+                <View style={styles.locSearchContainer}>
+                  <View style={styles.locSearchBar}>
+                    <Ionicons name="search-outline" size={17} color="#9CA3AF" />
+                    <TextInput
+                      style={styles.locSearchInput}
+                      placeholder={`Search ${available.length} ${isWh ? 'warehouses' : 'events'} in Master...`}
+                      placeholderTextColor="#9CA3AF"
+                      value={pickerSearchQuery}
+                      onChangeText={setPickerSearchQuery}
+                    />
+                    {pickerSearchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setPickerSearchQuery('')}>
+                        <Ionicons name="close-circle" size={16} color="#9CA3AF" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {/* Filter Stats & Batch Action Row */}
+              <View style={styles.locFilterStatsBar}>
+                <Text style={styles.locFilterCountText}>
+                  {available.length === 0
+                    ? `0 ${isWh ? 'warehouses' : 'events'} created in Master`
+                    : `Showing ${filtered.length} of ${available.length} in Master`}
+                </Text>
+                {available.length > 0 && (
+                  <View style={styles.locBatchActions}>
+                    {filtered.length > 0 && (
+                      <TouchableOpacity style={styles.locBatchBtn} onPress={handleSelectAllFiltered}>
+                        <Text style={[styles.locBatchBtnText, { color: themeColor }]}>Select All</Text>
+                      </TouchableOpacity>
+                    )}
+                    {selected.length > 0 && (
+                      <TouchableOpacity style={styles.locBatchBtn} onPress={handleClearAll}>
+                        <Text style={[styles.locBatchBtnText, { color: '#EF4444' }]}>Clear All</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Scrollable checklist of Master items */}
+              <FlatList
+                data={filtered}
+                keyExtractor={(item, index) => item.id || item.name || String(index)}
+                style={styles.locList}
+                keyboardShouldPersistTaps="handled"
+                initialNumToRender={20}
+                maxToRenderPerBatch={25}
+                windowSize={10}
+                removeClippedSubviews={Platform.OS === 'android'}
+                renderItem={({ item }) => {
+                  const isChecked = selected.includes(item.name);
+                  return (
+                    <TouchableOpacity
+                      style={[styles.locItemRow, isChecked && styles.locItemRowSelected]}
+                      onPress={() => (isWh ? handleToggleWarehouse(item.name) : handleToggleEvent(item.name))}
+                      activeOpacity={0.65}
+                    >
+                      <View style={styles.locItemCheckbox}>
+                        <Ionicons
+                          name={isChecked ? 'checkbox' : 'square-outline'}
+                          size={22}
+                          color={isChecked ? themeColor : '#9CA3AF'}
+                        />
+                      </View>
+                      <View style={styles.locItemContent}>
+                        <Text style={[styles.locItemName, isChecked && { color: themeColor }]}>
+                          {item.name}
+                        </Text>
+                        {(item.code || item.city) ? (
+                          <Text style={styles.locItemSub}>
+                            {[item.code, item.city].filter(Boolean).join(' · ')}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {isChecked && (
+                        <View style={[styles.compactCountBadge, { backgroundColor: themeBg, borderColor: themeBorder, borderWidth: 1 }]}>
+                          <Text style={[styles.compactCountText, { color: themeColor }]}>Selected</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={styles.locEmptyState}>
+                    <MaterialCommunityIcons name={iconName} size={44} color="#D1D5DB" />
+                    <Text style={styles.locEmptyText}>
+                      {available.length === 0
+                        ? `No ${isWh ? 'Warehouses' : 'Events'} in Master`
+                        : `No matching ${isWh ? 'warehouses' : 'events'}`}
+                    </Text>
+                    <Text style={styles.locEmptyHint}>
+                      {available.length === 0
+                        ? `Only ${isWh ? 'warehouses' : 'events'} created in Master can be assigned. Please create ${isWh ? 'warehouses' : 'events'} in Master tab first.`
+                        : `No ${isWh ? 'warehouses' : 'events'} match "${pickerSearchQuery}".`}
+                    </Text>
+                  </View>
+                }
+              />
+
+              {/* Sticky Bottom Apply Bar */}
+              <View style={styles.locBottomStickyBar}>
+                <View>
+                  <Text style={styles.locBottomSummaryText}>
+                    {selected.length} {isWh ? 'Warehouse(s)' : 'Event(s)'} assigned
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#6B7280' }}>
+                    {selected.length === 0 ? 'User will have no location access' : 'Ready to save'}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.locApplyBtn}
+                  onPress={() => setLocationPickerType(null)}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient colors={themeGradient} style={styles.locApplyBtnGradient}>
+                    <Text style={styles.locApplyBtnText}>Apply Selection</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })()}
       </Modal>
     </View>
   );
@@ -887,9 +1509,40 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F4FA',
   },
+  whiteDashboardHeader: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: 12,
+    paddingBottom: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDE8F5',
+  },
+  headerUserSetupTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E1435',
+    letterSpacing: -0.3,
+  },
+  scopeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+  },
+  scopeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#20C997',
+    marginRight: 6,
+  },
+  scopeSubText: {
+    fontSize: 11,
+    color: '#706984',
+    fontWeight: '500',
+  },
   navyHeader: {
-    backgroundColor: '#160F2F',
-    paddingTop: Platform.OS === 'ios' ? 12 : 12,
+    backgroundColor: '#160D33',
+    paddingTop: 8,
     paddingBottom: 22,
     paddingHorizontal: 18,
     borderBottomLeftRadius: 26,
@@ -976,7 +1629,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 18,
     paddingBottom: 100,
   },
   searchBar: {
@@ -1183,6 +1836,29 @@ const styles = StyleSheet.create({
   },
   statusTextInactive: {
     color: '#858198',
+  },
+  cardLocBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3EEFF',
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    marginLeft: 6,
+  },
+  cardLocBadgeNull: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  cardLocBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#6D28D9',
+  },
+  cardLocBadgeTextNull: {
+    color: '#DC2626',
   },
   threeDotBtn: {
     padding: 6,
@@ -1542,134 +2218,604 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
-  // Action Menu Sheet (Screen 05)
-  actionsBackdrop: {
+  // Compact Three-Dot Action Popup Styles
+  compactActionsBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    justifyContent: 'flex-end',
-  },
-  actionsSheetCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-  },
-  actionUserPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1B1233',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 16,
-  },
-  actionAvatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#39215C',
-    borderWidth: 1.5,
-    borderColor: '#8A46F5',
-    alignItems: 'center',
+    backgroundColor: 'rgba(15, 10, 30, 0.55)',
     justifyContent: 'center',
-    marginRight: 12,
-  },
-  actionAvatarLetter: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#C49AFF',
-  },
-  actionUserMeta: {
-    flex: 1,
-  },
-  actionUserName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  actionUserRole: {
-    fontSize: 11.5,
-    color: '#B9ADC9',
-    marginTop: 2,
-    marginBottom: 5,
-  },
-  statusBadgeSmall: {
-    flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#0D3B31',
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 28,
   },
-  statusBadgeSmallInactive: {
-    backgroundColor: '#2E2A3C',
-  },
-  statusTextSmall: {
-    fontSize: 9.5,
-    fontWeight: '700',
-    color: '#6FE0BB',
-  },
-  statusTextSmallInactive: {
-    color: '#9E9AA9',
-  },
-  menuLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#858198',
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  menuActionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  compactActionsCard: {
+    width: '100%',
+    maxWidth: 340,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E8E4F0',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderRadius: 20,
+    padding: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 12,
+  },
+  compactMenuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 10,
   },
-  menuActionIconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  compactMenuUserName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1E1B4B',
+  },
+  compactMenuUserRole: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  compactCloseBtn: {
+    padding: 6,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+  },
+  compactMenuDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginBottom: 10,
+  },
+  compactMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    marginBottom: 6,
+    backgroundColor: '#F8F9FD',
+  },
+  compactMenuItemLast: {
+    marginBottom: 12,
+  },
+  compactMenuIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  menuActionTextCol: {
+  compactMenuItemText: {
     flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E293B',
   },
-  menuActionTitle: {
+  compactCancelBtn: {
+    paddingVertical: 11,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
+    marginTop: 4,
+  },
+  compactCancelText: {
     fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+  },
+
+  // Compact Location Selector on Forms
+  compactAssignBox: {
+    marginBottom: 12,
+  },
+  compactAssignHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  compactAssignTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  compactAssignIconBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  compactAssignTitle: {
+    fontSize: 12,
     fontWeight: '700',
     color: '#282044',
   },
-  menuActionSub: {
+  compactCountBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 10,
+    marginLeft: 6,
+  },
+  compactCountText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  compactManageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  compactManageBtnText: {
     fontSize: 10.5,
-    color: '#858198',
+    fontWeight: '700',
+    marginRight: 2,
+  },
+  compactEmptyHintBar: {
+    backgroundColor: '#F8F7FC',
+    borderWidth: 1,
+    borderColor: '#ECE8F5',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  compactEmptyHintText: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+  },
+  compactChipsScroll: {
+    maxHeight: 34,
+  },
+  compactChipsScrollContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 2,
+    gap: 6,
+  },
+  compactChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  compactChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    maxWidth: 140,
+  },
+
+  // Searchable Multi-Select Modal for 500+ Items
+  locModalRoot: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  locModalHeader: {
+    paddingTop: Platform.OS === 'ios' ? 48 : 20,
+    paddingBottom: 16,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  locModalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  locModalBackBtn: {
+    marginRight: 12,
+  },
+  locModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  locModalSub: {
+    fontSize: 11.5,
+    color: '#E0E7FF',
     marginTop: 2,
   },
-  safeguardsCard: {
-    backgroundColor: '#F8F6FD',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E5E0F0',
-    padding: 14,
-    marginTop: 6,
+  locModalHeaderDoneBtn: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
-  safeguardsTitle: {
+  locModalHeaderDoneText: {
     fontSize: 12,
+    fontWeight: '700',
+  },
+  locSearchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  locSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 38,
+  },
+  locSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1F2937',
+    padding: 0,
+    marginLeft: 8,
+  },
+  locQuickAddBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 8,
+  },
+  locQuickAddInput: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 34,
+    fontSize: 12,
+    color: '#1F2937',
+  },
+  locQuickAddBtn: {
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locQuickAddBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  locFilterStatsBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  locFilterCountText: {
+    fontSize: 11.5,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  locBatchActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  locBatchBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 6,
+  },
+  locBatchBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4B5563',
+  },
+  locList: {
+    flex: 1,
+  },
+  locItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  locItemRowSelected: {
+    backgroundColor: '#F8F5FF',
+  },
+  locItemCheckbox: {
+    marginRight: 12,
+  },
+  locItemContent: {
+    flex: 1,
+  },
+  locItemName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  locItemSub: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  locEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  locEmptyText: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 8,
+  },
+  locEmptyHint: {
+    fontSize: 11.5,
+    color: '#9CA3AF',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  locBottomStickyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  locBottomSummaryText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  locApplyBtn: {
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  locApplyBtnGradient: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locApplyBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  accessCodeFieldWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#7138E8',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    height: 48,
+    marginBottom: 4,
+    shadowColor: '#7138E8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  accessCodePrefixPill: {
+    backgroundColor: '#F0E8FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 7,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#D8C6FA',
+  },
+  accessCodePrefixPillText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#7138E8',
+    letterSpacing: 1,
+  },
+  accessCodeNumberInput: {
+    flex: 1,
+    fontSize: 18,
     fontWeight: '800',
-    color: '#282044',
+    color: '#1F2937',
+    letterSpacing: 2,
+    paddingVertical: 4,
+  },
+  accessCodeTagPill: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  accessCodeTagPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  accessCodeHelperText: {
+    fontSize: 11,
+    color: '#7138E8',
+    fontWeight: '600',
+    marginBottom: 14,
+    marginLeft: 2,
+  },
+  locDropdownWrapper: {
+    marginBottom: 16,
+  },
+  locDropdownLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 6,
   },
-  safeguardsBullet: {
+  locDropdownRequiredStar: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
+  locDropdownLabelText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  locDropdownCountPill: {
+    marginLeft: 8,
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  locDropdownCountPillText: {
     fontSize: 10.5,
-    color: '#35304D',
-    lineHeight: 16,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  locDropdownTriggerBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  locDropdownTriggerBoxOpen: {
+    borderColor: '#2563EB',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  locDropdownTriggerText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1F2937',
+    fontWeight: '500',
+    marginRight: 8,
+  },
+  locDropdownPlaceholderText: {
+    color: '#9CA3AF',
+    fontWeight: '400',
+  },
+  locDropdownMenuCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    marginTop: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: 'hidden',
+    zIndex: 100,
+  },
+  locDropdownCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#F9FAFB',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  locDropdownAvailableCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  locDropdownHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  locQuickBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  locQuickBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  locDropdownScroll: {
+    maxHeight: 210,
+  },
+  locDropdownEmptyBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    backgroundColor: '#F9FAFB',
+  },
+  locDropdownEmptyText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginLeft: 6,
+    flex: 1,
+  },
+  locDropdownItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  locDropdownItemRowActive: {
+    backgroundColor: '#F8FAFC',
+  },
+  locCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  locCheckboxChecked: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  locDropdownItemName: {
+    flex: 1,
+    fontSize: 13.5,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  locDropdownItemNameChecked: {
+    color: '#1E40AF',
+    fontWeight: '700',
+  },
+  locDropdownItemCity: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 6,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -13,121 +13,154 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import masterService from '../../services/masterService';
+import {
+  getUserAccessibleWarehouses,
+  getMovementEventOptions,
+} from '../../services/locationScopeHelper';
+import CommonCalendarModal from '../../components/CommonCalendarModal';
+import SearchableDropdown from '../../components/SearchableDropdown';
+import TwoPartLocationPicker from '../../components/TwoPartLocationPicker';
 
-const KNOWN_COURIERS = [
-  'Blue Dart Express',
-  'DHL Express',
-  'Delhivery Logistics',
-  'DTDC Courier',
-  'FedEx India',
-  'Trackon Courier',
-];
+import carrierService from '../../services/carrierService';
 
-const KNOWN_TRANSPORTERS = [
-  'Return Logistics Van',
-  'Dedicated Truck Fleet',
-  'Local Pickup Fleet',
-  'VRL Logistics Ltd',
-  'SafeXpress Supply Chain',
-  'TCI Freight Logistics',
-];
 
-export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundList = [] }) {
-  // Master products & warehouses
-  const masterProducts = masterService.getProducts();
-  const masterWarehouses = masterService.getWarehouses();
+export default function CreateReturnScreen({ editingReturn, onCancel, onSaveReturn, outboundList = [], session }) {
+  // Master products, warehouses & events (strictly master-created only)
+  const masterProducts = (masterService?.getProducts?.() || []);
+  const masterWarehouses = masterService?.getWarehouses?.() || [];
+  const masterEvents = masterService?.getEvents?.() || [];
 
-  // Completed outbound list for dropdown selection (fallback list if empty)
-  const completedOutbounds =
-    outboundList && outboundList.length > 0
-      ? outboundList
-      : [
-          {
-            id: 'OUT-001',
-            no: 'OUT-2026-001',
-            refNo: 'SO-99120',
-            source: 'Warehouse A - Central',
-            destination: 'Jio Garden - City Music Fest',
-            status: 'Completed',
-          },
-          {
-            id: 'OUT-003',
-            no: 'OUT-2026-003',
-            refNo: 'SO-99105',
-            source: 'Warehouse A - Central',
-            destination: 'JLN Stadium Arena',
-            status: 'Completed',
-          },
-          {
-            id: 'OUT-004',
-            no: 'OUT-2026-004',
-            refNo: 'SO-99088',
-            source: 'JLN Stadium Store',
-            destination: 'Arena Club Event B',
-            status: 'Completed',
-          },
-          {
-            id: 'OUT-005',
-            no: 'OUT-2026-005',
-            refNo: 'SO-99071',
-            source: 'Warehouse A - Central',
-            destination: 'Pune Tech Summit',
-            status: 'Completed',
-          },
-        ];
+  const [sourceType, setSourceType] = useState('Event');
+  const [destType, setDestType] = useState('Warehouse');
+
+  const warehouseOptions = masterWarehouses
+    .filter((w) => (w.status || 'active').toLowerCase() === 'active')
+    .map((w) => (typeof w === 'string' ? w : w.name || w.code));
+
+  const eventOptions = masterEvents
+    .filter((e) => (e.status || 'active').toLowerCase() === 'active')
+    .map((e) => (typeof e === 'string' ? e : e.name || e.code));
+
+  // Completed outbound list for dropdown selection (empty if no user-created outbounds)
+  const completedOutbounds = Array.isArray(outboundList) ? outboundList : [];
 
   // Default selected outbound
-  const defaultSelectedOutbound = completedOutbounds[1] || completedOutbounds[0];
+  const defaultSelectedOutbound = completedOutbounds[0] || null;
 
   // --- SECTION 1: RETURN CONSIGNMENT DETAILS ---
-  const [consignmentDate, setConsignmentDate] = useState('10/10/2026');
-  // Title is "Outbound No." as requested
-  const [outboundNo, setOutboundNo] = useState(defaultSelectedOutbound?.no || 'OUT-2026-003');
-  // Auto-filled Source (where goods are returning from -> Outbound destination)
+  const [consignmentDate, setConsignmentDate] = useState(editingReturn?.date || '10/10/2026');
+  const [isCalendarVisible, setIsCalendarVisible] = useState(false);
+  const [outboundNo, setOutboundNo] = useState(editingReturn?.refNo || editingReturn?.outboundNo || defaultSelectedOutbound?.no || '');
   const [source, setSource] = useState(
-    defaultSelectedOutbound?.destination || 'JLN Stadium Arena'
+    editingReturn?.source || defaultSelectedOutbound?.destination || eventOptions[0] || ''
   );
-  // Auto-filled Destination (receiving warehouse -> Outbound source)
   const [destination, setDestination] = useState(
-    defaultSelectedOutbound?.source || 'Warehouse A - Central'
+    editingReturn?.destination || defaultSelectedOutbound?.source || warehouseOptions[0] || ''
   );
 
   // --- SECTION 2: PRODUCT DETAILS ---
-  const [productItems, setProductItems] = useState([
-    {
-      id: '1',
-      srNo: 1,
-      productId: masterProducts[0]?.id || 'PRD-001',
-      productName: masterProducts[0]?.name || 'Item 22',
-      uom: masterProducts[0]?.uom || 'Pieces (Pcs)',
-      returnedQty: '6',
-      price: String(masterProducts[0]?.unitPrice || 1500),
-      amount: 9000,
-    },
-    {
-      id: '2',
-      srNo: 2,
-      productId: masterProducts[1]?.id || 'PRD-002',
-      productName: masterProducts[1]?.name || 'Portable Speaker',
-      uom: masterProducts[1]?.uom || 'Pieces (Pcs)',
-      returnedQty: '2',
-      price: String(masterProducts[1]?.unitPrice || 4200),
-      amount: 8400,
-    },
-  ]);
+  const [productItems, setProductItems] = useState(() => {
+    if (editingReturn?.productLines && editingReturn.productLines.length > 0) {
+      return JSON.parse(JSON.stringify(editingReturn.productLines));
+    }
+    if (masterProducts.length > 0) {
+      return [
+        {
+          id: '1',
+          srNo: 1,
+          productId: masterProducts[0]?.id || '',
+          productName: masterProducts[0]?.name || '',
+          uom: masterProducts[0]?.uom || 'Pieces (Pcs)',
+          returnedQty: '1',
+          price: String(masterProducts[0]?.unitPrice || 0),
+          amount: Number(masterProducts[0]?.unitPrice || 0) * 1,
+        },
+      ];
+    }
+    return [
+      {
+        id: '1',
+        srNo: 1,
+        productId: '',
+        productName: '',
+        uom: 'Pieces (Pcs)',
+        returnedQty: '1',
+        price: '0',
+        amount: 0,
+      },
+    ];
+  });
 
   // --- SECTION 3: RECEIVING METHOD ('courier' | 'transport') ---
-  const [receivingMethod, setReceivingMethod] = useState('transport');
+  const [receivingMethod, setReceivingMethod] = useState(() => {
+    const meth = (editingReturn?.method || '').toLowerCase();
+    if (meth.includes('courier') || editingReturn?.receivingMethodDetails?.type?.toLowerCase() === 'courier') {
+      return 'courier';
+    }
+    return 'transport';
+  });
 
-  // Courier fields
-  const [awbNo, setAwbNo] = useState('AWB-RET-88190');
-  const [courierCarrier, setCourierCarrier] = useState('Blue Dart Express');
+  // Courier fields (persistent, never cleared across tabs or save)
+  const [awbNo, setAwbNo] = useState(
+    editingReturn?.receivingMethodDetails?.awbNo || editingReturn?.awbNo || ''
+  );
+  const [courierCarrier, setCourierCarrier] = useState(
+    editingReturn?.receivingMethodDetails?.carrier || editingReturn?.courierCarrier || editingReturn?.carrier || ''
+  );
 
-  // Transport fields
-  const [shipmentNo, setShipmentNo] = useState('RET-SLIP-2026-019');
-  const [transporter, setTransporter] = useState('Return Logistics Van');
-  const [vehicleNo, setVehicleNo] = useState('MH-02-CD-5678');
-  const [lrDocketNo, setLrDocketNo] = useState('RN-883311');
+  // Transport fields (persistent, never cleared across tabs or save)
+  const [shipmentNo, setShipmentNo] = useState(
+    editingReturn?.receivingMethodDetails?.shipmentNo || editingReturn?.shipmentNo || ''
+  );
+  const [transporter, setTransporter] = useState(
+    editingReturn?.receivingMethodDetails?.transporter || editingReturn?.transporter || ''
+  );
+  const [vehicleNo, setVehicleNo] = useState(
+    editingReturn?.receivingMethodDetails?.vehicleNo || editingReturn?.vehicleNo || ''
+  );
+  const [lrDocketNo, setLrDocketNo] = useState(
+    editingReturn?.receivingMethodDetails?.lrDocketNo || editingReturn?.lrDocketNo || ''
+  );
+
+  // Dynamic Logistics Entities (Carriers & Transporters)
+  const [carrierList, setCarrierList] = useState(carrierService.getCarriers());
+  const [transporterList, setTransporterList] = useState(carrierService.getTransporters());
+  const [newLogisticsName, setNewLogisticsName] = useState('');
+
+  useEffect(() => {
+    carrierService.init().then(() => {
+      setCarrierList(carrierService.getCarriers());
+      setTransporterList(carrierService.getTransporters());
+    });
+    const unsub = carrierService.subscribe(() => {
+      setCarrierList(carrierService.getCarriers());
+      setTransporterList(carrierService.getTransporters());
+    });
+    return () => unsub();
+  }, []);
+
+  const handleAddLogisticsEntity = async () => {
+    const trimmed = newLogisticsName.trim();
+    if (!trimmed) return;
+    if (receivingMethod === 'courier') {
+      await carrierService.addCarrier(trimmed);
+      setCourierCarrier(trimmed);
+    } else {
+      await carrierService.addTransporter(trimmed);
+      setTransporter(trimmed);
+    }
+    setNewLogisticsName('');
+  };
+
+  const handleDeleteLogisticsEntity = async (name) => {
+    if (receivingMethod === 'courier') {
+      await carrierService.deleteCarrier(name);
+      if (courierCarrier === name) setCourierCarrier('');
+    } else {
+      await carrierService.deleteTransporter(name);
+      if (transporter === name) setTransporter('');
+    }
+  };
 
   // --- MODALS FOR EASY PICKING ---
   const [isOutboundPickerVisible, setIsOutboundPickerVisible] = useState(false);
@@ -156,12 +189,15 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
   // --- SECTION 2 HELPERS ---
   const handleAddItem = () => {
     const nextSr = productItems.length + 1;
-    const defaultProd = masterProducts[nextSr % masterProducts.length] || masterProducts[0];
+    const defaultProd = masterProducts.length > 0
+      ? (masterProducts[nextSr % masterProducts.length] || masterProducts[0])
+      : null;
     const newItem = {
       id: String(Date.now()),
       srNo: nextSr,
       productId: defaultProd?.id || '',
-      productName: defaultProd?.name || 'Select Product',
+      productName: defaultProd?.name || '',
+      trackingType: defaultProd?.trackingType || 'Countable',
       uom: defaultProd?.uom || 'Pieces (Pcs)',
       returnedQty: '1',
       price: String(defaultProd?.unitPrice || 0),
@@ -183,6 +219,67 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
     setProductItems(reindexed);
   };
 
+  const [activeSearchIndex, setActiveSearchIndex] = useState(null);
+  const [activeSearchQuery, setActiveSearchQuery] = useState('');
+
+  const handleTypeProduct = (index, text) => {
+    setActiveSearchIndex(index);
+    setActiveSearchQuery(text);
+
+    const updated = [...productItems];
+    updated[index] = { ...updated[index], productName: text };
+    setProductItems(updated);
+  };
+
+  const handleClearProduct = (index) => {
+    const updated = [...productItems];
+    updated[index] = {
+      ...updated[index],
+      productId: '',
+      productName: '',
+      sku: '',
+      trackingType: 'Countable',
+      uom: 'Pieces (Pcs)',
+      price: '0',
+      amount: 0,
+    };
+    setProductItems(updated);
+    setActiveSearchQuery('');
+  };
+
+  const applyProductToRow = (index, product, closeSearch = true) => {
+    const updated = [...productItems];
+    const item = { ...updated[index] };
+
+    item.productId = product.id;
+    item.productName = product.name;
+    item.sku = product.sku || product.id || '';
+    item.trackingType = product.trackingType || 'Countable';
+    item.uom = product.uom || 'Pieces (Pcs)';
+    item.price = String(product.unitPrice || 0);
+
+    const qtyNum = parseFloat(item.returnedQty) || 0;
+    const priceNum = parseFloat(item.price) || 0;
+    item.amount = Math.round(qtyNum * priceNum);
+
+    updated[index] = item;
+    setProductItems(updated);
+    if (closeSearch) {
+      setActiveSearchIndex(null);
+      setActiveSearchQuery('');
+    }
+  };
+
+  const filteredMasterProducts = masterProducts.filter((p) => {
+    if (!activeSearchQuery.trim()) return true;
+    const q = activeSearchQuery.toLowerCase().trim();
+    return (
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.sku && p.sku.toLowerCase().includes(q)) ||
+      (p.category && p.category.toLowerCase().includes(q))
+    );
+  });
+
   const handleUpdateItemField = (index, field, value) => {
     const updated = [...productItems];
     const item = { ...updated[index], [field]: value };
@@ -198,22 +295,39 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
 
   const handleSelectProduct = (product) => {
     if (activeEditingItemIndex === null) return;
-    const updated = [...productItems];
-    const item = { ...updated[activeEditingItemIndex] };
-
-    item.productId = product.id;
-    item.productName = product.name;
-    item.uom = product.uom || 'Pieces (Pcs)';
-    item.price = String(product.unitPrice || 0);
-
-    const qtyNum = parseFloat(item.returnedQty) || 0;
-    const priceNum = parseFloat(item.price) || 0;
-    item.amount = Math.round(qtyNum * priceNum);
-
-    updated[activeEditingItemIndex] = item;
-    setProductItems(updated);
+    applyProductToRow(activeEditingItemIndex, product, true);
     setIsProductPickerVisible(false);
     setActiveEditingItemIndex(null);
+  };
+
+  const getTrackingBadgeStyle = (trackingType) => {
+    const lower = (trackingType || '').toLowerCase();
+    if (lower.includes('serial')) {
+      return {
+        bg: '#F3E8FF',
+        text: '#6D28D9',
+        label: 'Serialized',
+      };
+    }
+    if (lower.includes('consumable')) {
+      return {
+        bg: '#FEF3C7',
+        text: '#D97706',
+        label: 'Consumable',
+      };
+    }
+    if (lower.includes('non')) {
+      return {
+        bg: '#E0F2FE',
+        text: '#0284C7',
+        label: 'Non-Serialized',
+      };
+    }
+    return {
+      bg: '#E6F4EA',
+      text: '#18794E',
+      label: 'Countable',
+    };
   };
 
   // Totals Calculation
@@ -235,8 +349,8 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
 
     const randomSuffix = String(Math.floor(100 + Math.random() * 900));
     const draftReturn = {
-      id: `RET-DRAFT-${Date.now()}`,
-      no: `RET-2026-D${randomSuffix}`,
+      id: editingReturn?.id || `RET-DRAFT-${Date.now()}`,
+      no: editingReturn?.no || `RET-2026-D${randomSuffix}`,
       date: consignmentDate.trim() || '10 Oct 2026',
       refNo: outboundNo.trim(), // Stored as the refNo matching Outbound No.
       source: source.trim() || 'Event Return Site',
@@ -249,10 +363,22 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
       itemsCount: productItems.length,
       totalQty: totalQuantity,
       totalAmount: totalAmount,
-      receivingMethodDetails:
-        receivingMethod === 'courier'
-          ? { type: 'Courier', awbNo, carrier: courierCarrier }
-          : { type: 'Transport', shipmentNo, transporter, vehicleNo, lrDocketNo },
+      receivingMethodDetails: {
+        type: receivingMethod === 'courier' ? 'Courier' : 'Transport',
+        awbNo: awbNo.trim(),
+        carrier: courierCarrier.trim(),
+        shipmentNo: shipmentNo.trim() || ('RET-SHP-' + Date.now().toString().slice(-6)),
+        transporter: transporter.trim(),
+        vehicleNo: vehicleNo.trim(),
+        lrDocketNo: lrDocketNo.trim(),
+      },
+      awbNo: awbNo.trim(),
+      carrier: courierCarrier.trim(),
+      courierCarrier: courierCarrier.trim(),
+      shipmentNo: shipmentNo.trim() || ('RET-SHP-' + Date.now().toString().slice(-6)),
+      transporter: transporter.trim(),
+      vehicleNo: vehicleNo.trim(),
+      lrDocketNo: lrDocketNo.trim(),
       productLines: productItems,
     };
 
@@ -316,10 +442,6 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
         return;
       }
     } else {
-      if (!shipmentNo.trim()) {
-        Alert.alert('Validation Error', 'Return Slip / Shipment No. is required for Transport return.');
-        return;
-      }
       if (!transporter.trim()) {
         Alert.alert('Validation Error', 'Transporter / Carrier is required for Transport return.');
         return;
@@ -329,8 +451,8 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
     // 4. Generate Created Record
     const randomSuffix = String(Math.floor(100 + Math.random() * 900));
     const newReturn = {
-      id: `RET-${Date.now()}`,
-      no: `RET-2026-${randomSuffix}`,
+      id: editingReturn?.id || `RET-${Date.now()}`,
+      no: editingReturn?.no || `RET-2026-${randomSuffix}`,
       date: consignmentDate.trim(),
       refNo: outboundNo.trim(), // Linked Outbound No.
       source: source.trim(),
@@ -343,10 +465,22 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
       itemsCount: productItems.length,
       totalQty: totalQuantity,
       totalAmount: totalAmount,
-      receivingMethodDetails:
-        receivingMethod === 'courier'
-          ? { type: 'Courier', awbNo, carrier: courierCarrier }
-          : { type: 'Transport', shipmentNo, transporter, vehicleNo, lrDocketNo },
+      receivingMethodDetails: {
+        type: receivingMethod === 'courier' ? 'Courier' : 'Transport',
+        awbNo: awbNo.trim(),
+        carrier: courierCarrier.trim(),
+        shipmentNo: shipmentNo.trim() || ('RET-SHP-' + Date.now().toString().slice(-6)),
+        transporter: transporter.trim(),
+        vehicleNo: vehicleNo.trim(),
+        lrDocketNo: lrDocketNo.trim(),
+      },
+      awbNo: awbNo.trim(),
+      carrier: courierCarrier.trim(),
+      courierCarrier: courierCarrier.trim(),
+      shipmentNo: shipmentNo.trim() || ('RET-SHP-' + Date.now().toString().slice(-6)),
+      transporter: transporter.trim(),
+      vehicleNo: vehicleNo.trim(),
+      lrDocketNo: lrDocketNo.trim(),
       productLines: productItems,
     };
 
@@ -364,29 +498,6 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
 
   return (
     <View style={styles.container}>
-      {/* 1. TOP NAVY HEADER matching SVG (#17102F) */}
-      <View style={styles.topNavyHeader}>
-        <View style={styles.navyHeaderLeft}>
-          <TouchableOpacity
-            style={styles.backIconButton}
-            activeOpacity={0.7}
-            onPress={onCancel}
-          >
-            <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-          <View>
-            <Text style={styles.navyTitle}>Create Return</Text>
-            <Text style={styles.navySubtitle}>
-              Record returned stock from completed events & venues
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.badgeLiveMode}>
-          <Text style={styles.badgeLiveModeText}>NEW RETURN</Text>
-        </View>
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -398,111 +509,70 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
           onPress={onCancel}
         >
           <Ionicons name="chevron-back" size={16} color="#6D43C0" />
-          <Text style={styles.breadcrumbText}>Movement / Return / New</Text>
+          <Text style={styles.breadcrumbText}>‹ Movement / Return / New</Text>
         </TouchableOpacity>
 
         {/* ============================================================== */}
-        {/* SECTION 1: RETURN CONSIGNMENT DETAILS (With Outbound No.)      */}
+        {/* SECTION 1: CONSIGNMENT DETAILS                                 */}
         {/* ============================================================== */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>1. Return Consignment Details</Text>
-            <View style={styles.sectionBadge}>
-              <Text style={styles.sectionBadgeText}>Event Return</Text>
-            </View>
+            <Text style={styles.cardTitle}>Consignment Details</Text>
           </View>
 
-          {/* Row 1: Date & Outbound No. (Dropdown auto-filling source & destination) */}
-          <View style={styles.fieldsRow}>
-            <View style={styles.fieldCol}>
-              <Text style={styles.fieldLabel}>Date *</Text>
-              <View style={styles.inputWrap}>
-                <Ionicons name="calendar-outline" size={14} color="#625A72" style={{ marginRight: 6 }} />
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="DD/MM/YYYY"
-                  placeholderTextColor="#9A93A7"
-                  value={consignmentDate}
-                  onChangeText={setConsignmentDate}
-                />
-              </View>
-            </View>
-
-            {/* Outbound No. Textbox with Dropdown Title */}
-            <View style={styles.fieldCol}>
-              <Text style={styles.fieldLabel}>Outbound No. *</Text>
-              <TouchableOpacity
-                style={styles.dropdownInputHighlight}
-                activeOpacity={0.8}
-                onPress={() => setIsOutboundPickerVisible(true)}
+          {/* Outbound No. Dropdown Picker (Auto-fills source & destination) */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={styles.fieldLabel}>
+              Outbound No. <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+            </Text>
+            <TouchableOpacity
+              style={styles.dropdownInputHighlight}
+              activeOpacity={0.8}
+              onPress={() => setIsOutboundPickerVisible(true)}
+            >
+              <Ionicons name="link-outline" size={14} color="#6D43C0" style={{ marginRight: 6 }} />
+              <Text
+                style={[
+                  styles.dropdownTextBold,
+                  !outboundNo && { color: '#9A93A7' },
+                ]}
+                numberOfLines={1}
               >
-                <Ionicons name="link-outline" size={14} color="#6D43C0" style={{ marginRight: 6 }} />
-                <Text
-                  style={[
-                    styles.dropdownTextBold,
-                    !outboundNo && { color: '#9A93A7' },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {outboundNo || 'Select Outbound No.'}
-                </Text>
-                <Ionicons name="chevron-down" size={14} color="#6D43C0" />
-              </TouchableOpacity>
-            </View>
+                {outboundNo || 'Select Outbound No.'}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color="#6D43C0" />
+            </TouchableOpacity>
           </View>
 
-          {/* Row 2: Source (Return Origin) & Destination (Receiving Warehouse) */}
-          <View style={styles.fieldsRow}>
-            <View style={styles.fieldCol}>
-              <View style={styles.labelWithHint}>
-                <Text style={styles.fieldLabel}>Source (Event Origin) *</Text>
-                <Text style={styles.autoBadge}>Auto-filled</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.dropdownInput}
-                activeOpacity={0.8}
-                onPress={() => setIsSourcePickerVisible(true)}
-              >
-                <Text
-                  style={[
-                    styles.dropdownText,
-                    !source && { color: '#9A93A7' },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {source || 'Select origin'}
-                </Text>
-                <Ionicons name="chevron-down" size={14} color="#625A72" />
-              </TouchableOpacity>
-            </View>
+          {/* Line 1: Source */}
+          <TwoPartLocationPicker
+            label="Source"
+            required={true}
+            type={sourceType}
+            onTypeChange={(t) => {
+              setSourceType(t);
+              setSource('');
+            }}
+            value={source}
+            onSelect={(val) => setSource(val)}
+            warehouses={warehouseOptions}
+            events={eventOptions}
+          />
 
-            <View style={styles.fieldCol}>
-              <View style={styles.labelWithHint}>
-                <Text style={styles.fieldLabel}>Destination (Warehouse) *</Text>
-                <Text style={styles.autoBadge}>Auto-filled</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.dropdownInput}
-                activeOpacity={0.8}
-                onPress={() => setIsDestPickerVisible(true)}
-              >
-                <Text
-                  style={[
-                    styles.dropdownText,
-                    !destination && { color: '#9A93A7' },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {destination || 'Select destination'}
-                </Text>
-                <Ionicons name="chevron-down" size={14} color="#625A72" />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <Text style={styles.cardValidationHint}>
-            * Selecting Outbound No. auto-fills the return origin and receiving warehouse.
-          </Text>
+          {/* Line 2: Destination */}
+          <TwoPartLocationPicker
+            label="Destination"
+            required={true}
+            type={destType}
+            onTypeChange={(t) => {
+              setDestType(t);
+              setDestination('');
+            }}
+            value={destination}
+            onSelect={(val) => setDestination(val)}
+            warehouses={warehouseOptions}
+            events={eventOptions}
+          />
         </View>
 
         {/* ============================================================== */}
@@ -510,25 +580,15 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
         {/* ============================================================== */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>2. Product Details</Text>
+            <Text style={styles.cardTitle}>Product Details</Text>
             <TouchableOpacity
               style={styles.addItemBtn}
               activeOpacity={0.85}
               onPress={handleAddItem}
             >
               <Ionicons name="add" size={13} color="#FFFFFF" style={{ marginRight: 2 }} />
-              <Text style={styles.addItemBtnText}>+ Add item</Text>
+              <Text style={styles.addItemBtnText}>Add item</Text>
             </TouchableOpacity>
-          </View>
-
-          {/* Subheader bar inside card */}
-          <View style={styles.productSubHeaderBar}>
-            <Text style={styles.productSubHeaderText}>
-              Product line items ({productItems.length})
-            </Text>
-            <Text style={styles.productSubHeaderSub}>
-              Amount = Returned Qty × Price
-            </Text>
           </View>
 
           {/* Product Items Table */}
@@ -540,148 +600,146 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
             <View style={styles.tableBlock}>
               {/* Table Header Row */}
               <View style={styles.tableHeaderRow}>
-                <View style={[styles.thCell, { width: 44 }]}>
-                  <Text style={styles.thText}>Sr.</Text>
-                </View>
-                <View style={[styles.thCell, { width: 150 }]}>
+                <View style={[styles.thCell, { width: 230 }]}>
                   <Text style={styles.thText}>Product Name</Text>
                 </View>
                 <View style={[styles.thCell, { width: 75 }]}>
                   <Text style={styles.thText}>UoM</Text>
                 </View>
+                <View style={[styles.thCell, { width: 110 }]}>
+                  <Text style={styles.thText}>Tracking Type</Text>
+                </View>
                 <View style={[styles.thCell, { width: 90 }]}>
                   <Text style={styles.thText}>Returned Qty</Text>
                 </View>
-                <View style={[styles.thCell, { width: 80 }]}>
-                  <Text style={styles.thText}>Price (₹)</Text>
-                </View>
-                <View style={[styles.thCell, { width: 90 }]}>
-                  <Text style={styles.thText}>Amount (₹)</Text>
-                </View>
-                <View style={[styles.thCell, { width: 55, borderRightWidth: 0 }]}>
+                <View style={[styles.thCell, { width: 65, borderRightWidth: 0 }]}>
                   <Text style={styles.thText}>Action</Text>
                 </View>
               </View>
 
               {/* Table Body Rows */}
-              {productItems.map((item, index) => (
-                <View key={item.id} style={styles.tableBodyRow}>
-                  {/* Sr. No. */}
-                  <View style={[styles.tdCell, { width: 44, justifyContent: 'center', alignItems: 'center' }]}>
-                    <Text style={styles.tdSrText}>{item.srNo}</Text>
-                  </View>
+              {productItems.map((item, index) => {
+                const badge = getTrackingBadgeStyle(item.trackingType);
 
-                  {/* Product Name (Tap to select from master catalog) */}
-                  <View style={[styles.tdCell, { width: 150 }]}>
-                    <TouchableOpacity
-                      style={styles.tdDropdownBtn}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setActiveEditingItemIndex(index);
-                        setProductSearchQuery('');
-                        setIsProductPickerVisible(true);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.tdDropdownText,
-                          (!item.productName || item.productName === 'Select Product') && { color: '#9A93A7' },
-                        ]}
-                        numberOfLines={1}
+                return (
+                  <View key={item.id} style={styles.tableBodyRow}>
+                    {/* Product Name with Type-to-Search */}
+                    <View style={[styles.tdCell, { width: 230, paddingVertical: 4, zIndex: activeSearchIndex === index ? 9999 : 1 }]}>
+                      <View style={{ width: '100%' }}>
+                        <View style={[styles.tdProductInputWrap, activeSearchIndex === index && { borderColor: '#38BDF8', borderWidth: 1.5 }]}>
+                          <Ionicons name="search" size={13} color="#6D43C0" style={{ marginRight: 6 }} />
+                          <TextInput
+                            style={styles.tdProductTextInput}
+                            placeholder="Type to search product..."
+                            placeholderTextColor="#9A93A7"
+                            value={item.productName || ''}
+                            onChangeText={(text) => handleTypeProduct(index, text)}
+                            onFocus={() => {
+                              setActiveSearchIndex(index);
+                              setActiveSearchQuery(item.productName || '');
+                            }}
+                          />
+                          {item.productName ? (
+                            <TouchableOpacity
+                              onPress={() => handleClearProduct(index)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name="close-circle" size={15} color="#8F87A0" />
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+
+                        {/* Product Auto-Suggest Dropdown List (same as zipcode) */}
+                        {activeSearchIndex === index && filteredMasterProducts.length > 0 && (
+                          <View style={styles.zipDropdownCard}>
+                            <ScrollView
+                              nestedScrollEnabled={true}
+                              style={styles.zipDropdownScroll}
+                              keyboardShouldPersistTaps="handled"
+                            >
+                              {filteredMasterProducts.map((p, pIdx) => (
+                                <TouchableOpacity
+                                  key={p.id || p.sku || pIdx}
+                                  style={[
+                                    styles.zipDropdownItem,
+                                    pIdx === 0 && styles.zipDropdownItemActive,
+                                  ]}
+                                  onPress={() => applyProductToRow(index, p, true)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.zipDropdownItemText} numberOfLines={1}>
+                                    {p.name}
+                                  </Text>
+                                  {p.sku ? (
+                                    <Text style={styles.zipDropdownItemSub} numberOfLines={1}>
+                                      SKU: {p.sku} • {p.trackingType || 'Countable'} • {p.uom || 'Unit'}
+                                    </Text>
+                                  ) : null}
+                                </TouchableOpacity>
+                              ))}
+                            </ScrollView>
+                          </View>
+                        )}
+                      </View>
+                      {item.sku ? (
+                        <Text style={styles.tdProductSkuText} numberOfLines={1}>
+                          SKU: {item.sku}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {/* UoM */}
+                    <View style={[styles.tdCell, { width: 75, justifyContent: 'center', alignItems: 'center' }]}>
+                      <Text style={styles.tdText}>{item.uom || 'Pcs'}</Text>
+                    </View>
+
+                    {/* Tracking Type */}
+                    <View style={[styles.tdCell, { width: 110, justifyContent: 'center', alignItems: 'center' }]}>
+                      <View style={[styles.trackingBadgeSmall, { backgroundColor: badge.bg }]}>
+                        <Text style={[styles.trackingBadgeSmallText, { color: badge.text }]}>
+                          {badge.label}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Returned Qty */}
+                    <View style={[styles.tdCell, { width: 90 }]}>
+                      <TextInput
+                        style={[styles.tdTextInput, styles.tdNumericInput]}
+                        keyboardType="numeric"
+                        value={String(item.returnedQty)}
+                        placeholder="0"
+                        placeholderTextColor="#9A93A7"
+                        onChangeText={(val) => handleUpdateItemField(index, 'returnedQty', val)}
+                      />
+                    </View>
+
+                    {/* Action (Remove) */}
+                    <View style={[styles.tdCell, { width: 65, justifyContent: 'center', alignItems: 'center', borderRightWidth: 0 }]}>
+                      <TouchableOpacity
+                        style={styles.tdActionBtn}
+                        activeOpacity={0.7}
+                        onPress={() => handleRemoveItem(index)}
                       >
-                        {item.productName || 'Select'}
-                      </Text>
-                      <Ionicons name="caret-down" size={10} color="#6D43C0" />
-                    </TouchableOpacity>
+                        <Ionicons name="trash-outline" size={15} color="#D32F2F" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
-
-                  {/* UoM */}
-                  <View style={[styles.tdCell, { width: 75 }]}>
-                    <TextInput
-                      style={styles.tdTextInput}
-                      value={item.uom}
-                      placeholder="Pcs"
-                      placeholderTextColor="#9A93A7"
-                      onChangeText={(val) => handleUpdateItemField(index, 'uom', val)}
-                    />
-                  </View>
-
-                  {/* Returned Qty */}
-                  <View style={[styles.tdCell, { width: 90 }]}>
-                    <TextInput
-                      style={[styles.tdTextInput, styles.tdNumericInput]}
-                      keyboardType="numeric"
-                      value={String(item.returnedQty)}
-                      placeholder="0"
-                      placeholderTextColor="#9A93A7"
-                      onChangeText={(val) => handleUpdateItemField(index, 'returnedQty', val)}
-                    />
-                  </View>
-
-                  {/* Price */}
-                  <View style={[styles.tdCell, { width: 80 }]}>
-                    <TextInput
-                      style={[styles.tdTextInput, styles.tdNumericInput]}
-                      keyboardType="numeric"
-                      value={String(item.price)}
-                      placeholder="0"
-                      placeholderTextColor="#9A93A7"
-                      onChangeText={(val) => handleUpdateItemField(index, 'price', val)}
-                    />
-                  </View>
-
-                  {/* Calculated Amount */}
-                  <View style={[styles.tdCell, { width: 90, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 8 }]}>
-                    <Text style={styles.tdAmountText}>
-                      ₹{(item.amount || 0).toLocaleString()}
-                    </Text>
-                  </View>
-
-                  {/* Action (Remove) */}
-                  <View style={[styles.tdCell, { width: 55, justifyContent: 'center', alignItems: 'center', borderRightWidth: 0 }]}>
-                    <TouchableOpacity
-                      style={styles.tdActionBtn}
-                      activeOpacity={0.7}
-                      onPress={() => handleRemoveItem(index)}
-                    >
-                      <Ionicons name="trash-outline" size={15} color="#D32F2F" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
 
               {/* Totals Row */}
               <View style={styles.tableTotalRow}>
-                <View style={[styles.tdCell, { width: 269, paddingLeft: 8 }]}>
+                <View style={[styles.tdCell, { width: 395, paddingLeft: 8 }]}>
                   <Text style={styles.totalRowLabel}>TOTALS ({productItems.length} lines)</Text>
                 </View>
                 <View style={[styles.tdCell, { width: 90, justifyContent: 'center', alignItems: 'center' }]}>
                   <Text style={styles.totalRowQty}>{totalQuantity}</Text>
                 </View>
-                <View style={[styles.tdCell, { width: 80 }]} />
-                <View style={[styles.tdCell, { width: 90, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 8 }]}>
-                  <Text style={styles.totalRowAmount}>₹{totalAmount.toLocaleString()}</Text>
-                </View>
-                <View style={[styles.tdCell, { width: 55, borderRightWidth: 0 }]} />
+                <View style={[styles.tdCell, { width: 65, borderRightWidth: 0 }]} />
               </View>
             </View>
           </ScrollView>
-
-          {/* Product guidance footer notes matching SVG */}
-          <View style={styles.productFooterNotes}>
-            <View style={styles.bulletNoteRow}>
-              <Ionicons name="calculator-outline" size={12} color="#6D43C0" style={{ marginRight: 6 }} />
-              <Text style={styles.bulletNoteText}>
-                Amount = Returned Qty × Price (calculated automatically in real-time)
-              </Text>
-            </View>
-            <View style={styles.bulletNoteRow}>
-              <Ionicons name="information-circle-outline" size={12} color="#6D43C0" style={{ marginRight: 6 }} />
-              <Text style={styles.bulletNoteText}>
-                Use Action to edit or remove a product line.
-              </Text>
-            </View>
-          </View>
         </View>
 
         {/* ============================================================== */}
@@ -689,15 +747,8 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
         {/* ============================================================== */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>3. Receiving Method</Text>
-            <View style={styles.methodStatusBadge}>
-              <Text style={styles.methodStatusBadgeText}>
-                {receivingMethod === 'courier' ? 'Courier Return' : 'Dedicated Transport'}
-              </Text>
-            </View>
+            <Text style={styles.cardTitle}>Receiving Method</Text>
           </View>
-
-          <Text style={styles.cardSubtitle}>Choose how the return consignment is arriving at warehouse.</Text>
 
           {/* Segmented Switch: Courier vs Transport */}
           <View style={styles.methodToggleContainer}>
@@ -763,7 +814,9 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
             <View style={styles.methodSectionBlock}>
               <View style={styles.fieldsRow}>
                 <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>AWB / Tracking No. *</Text>
+                  <Text style={styles.fieldLabel}>
+                    AWB / Tracking No. <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+                  </Text>
                   <View style={styles.inputWrap}>
                     <Ionicons name="barcode-outline" size={14} color="#625A72" style={{ marginRight: 6 }} />
                     <TextInput
@@ -777,7 +830,9 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
                 </View>
 
                 <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>Carrier *</Text>
+                  <Text style={styles.fieldLabel}>
+                    Carrier <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+                  </Text>
                   <TouchableOpacity
                     style={styles.dropdownInput}
                     activeOpacity={0.8}
@@ -802,30 +857,13 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
           {/* Conditional Fields: TRANSPORT */}
           {receivingMethod === 'transport' && (
             <View style={styles.methodSectionBlock}>
-              <View style={styles.transportBanner}>
-                <Text style={styles.transportBannerTitle}>
-                  Transport details (when Transport is selected)
-                </Text>
-              </View>
 
-              {/* Row 1: Shipment No. & Carrier / Transporter */}
+              {/* Row 1: Carrier / Transporter */}
               <View style={styles.fieldsRow}>
                 <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>Return Slip / Shipment No. *</Text>
-                  <View style={styles.inputWrap}>
-                    <Ionicons name="receipt-outline" size={14} color="#625A72" style={{ marginRight: 6 }} />
-                    <TextInput
-                      style={styles.textInput}
-                      placeholder="Enter slip/shipment number"
-                      placeholderTextColor="#9A93A7"
-                      value={shipmentNo}
-                      onChangeText={setShipmentNo}
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>Fleet / Transporter *</Text>
+                  <Text style={styles.fieldLabel}>
+                    Fleet / Transporter <Text style={{ color: '#E03137', fontWeight: '700' }}>*</Text>
+                  </Text>
                   <TouchableOpacity
                     style={styles.dropdownInput}
                     activeOpacity={0.8}
@@ -878,77 +916,10 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
             </View>
           )}
 
-          {/* Notes matching SVG */}
-          <View style={styles.methodFooterNotes}>
-            <Text style={styles.methodNoteText}>
-              • Courier and Transport fields switch based on the selected method.
-            </Text>
-            <Text style={styles.methodNoteText}>
-              • Only the relevant receiving method fields should be required.
-            </Text>
-          </View>
         </View>
 
         {/* ============================================================== */}
-        {/* SECTION 4: REVIEW                                              */}
-        {/* ============================================================== */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>4. Review</Text>
-            <View style={styles.readyBadge}>
-              <Ionicons name="checkmark-circle" size={12} color="#03543F" style={{ marginRight: 4 }} />
-              <Text style={styles.readyBadgeText}>Verification</Text>
-            </View>
-          </View>
-
-          <Text style={styles.cardSubtitle}>
-            Check return details, quantities and receiving method before confirming return.
-          </Text>
-
-          {/* Review Quick Summary Grid */}
-          <View style={styles.reviewGrid}>
-            <View style={styles.reviewCardItem}>
-              <Text style={styles.reviewItemLabel}>LINKED OUTBOUND</Text>
-              <Text style={styles.reviewItemValueMain} numberOfLines={1}>
-                {outboundNo || 'No Outbound Linked'}
-              </Text>
-              <Text style={styles.reviewItemSub} numberOfLines={1}>
-                {source} ➔ {destination}
-              </Text>
-            </View>
-
-            <View style={styles.reviewCardItem}>
-              <Text style={styles.reviewItemLabel}>ITEMS & VALUE</Text>
-              <Text style={styles.reviewItemValueMain}>
-                {productItems.length} lines ({totalQuantity} units)
-              </Text>
-              <Text style={[styles.reviewItemSub, { color: '#6D43C0', fontWeight: '700' }]}>
-                ₹{totalAmount.toLocaleString()} Return Value
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.reviewMethodPill}>
-            <MaterialCommunityIcons
-              name={receivingMethod === 'courier' ? 'package-variant-closed' : 'truck-fast'}
-              size={15}
-              color="#5521B5"
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.reviewMethodText}>
-              {receivingMethod === 'courier'
-                ? `Courier: ${courierCarrier || 'N/A'} (AWB: ${awbNo || 'N/A'})`
-                : `Transport: ${transporter || 'N/A'} (Slip: ${shipmentNo || 'N/A'}${vehicleNo ? `, Veh: ${vehicleNo}` : ''})`}
-            </Text>
-          </View>
-
-          <Text style={styles.reviewDraftNotice}>
-            Drafts can be edited before final inspection confirmation.
-          </Text>
-        </View>
-
-        {/* ============================================================== */}
-        {/* SECTION 5: ACTIONS (Cancel, Save Draft, Create Return)         */}
+        {/* ACTIONS (Cancel, Save Draft, Create Return)                    */}
         {/* ============================================================== */}
         <View style={styles.actionsBarCard}>
           {/* Cancel */}
@@ -1199,39 +1170,44 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {masterWarehouses.map((wh) => (
-                <TouchableOpacity
-                  key={wh.id}
-                  style={[
-                    styles.simplePickerRow,
-                    destination === wh.name && styles.simplePickerRowActive,
-                  ]}
-                  onPress={() => {
-                    setDestination(wh.name);
-                    setIsDestPickerVisible(false);
-                  }}
-                >
-                  <Ionicons
-                    name="cube-outline"
-                    size={16}
-                    color={destination === wh.name ? '#6D43C0' : '#625A72'}
-                    style={{ marginRight: 10 }}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[
-                        styles.simplePickerText,
-                        destination === wh.name && styles.simplePickerTextActive,
-                      ]}
-                    >
-                      {wh.name}
-                    </Text>
-                    <Text style={styles.simplePickerSub}>
-                      {wh.city} • {wh.code}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+              {destinationWarehouseList.length === 0 ? (
+                <View style={{ padding: 16, alignItems: 'center' }}>
+                  <Text style={{ color: '#9CA3AF', fontSize: 13, textAlign: 'center' }}>
+                    No active warehouse assigned. Please create in Master tab.
+                  </Text>
+                </View>
+              ) : (
+                destinationWarehouseList.map((whName) => (
+                  <TouchableOpacity
+                    key={whName}
+                    style={[
+                      styles.simplePickerRow,
+                      destination === whName && styles.simplePickerRowActive,
+                    ]}
+                    onPress={() => {
+                      setDestination(whName);
+                      setIsDestPickerVisible(false);
+                    }}
+                  >
+                    <Ionicons
+                      name="cube-outline"
+                      size={16}
+                      color={destination === whName ? '#6D43C0' : '#625A72'}
+                      style={{ marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.simplePickerText,
+                          destination === whName && styles.simplePickerTextActive,
+                        ]}
+                      >
+                        {whName}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
             </ScrollView>
           </View>
         </View>
@@ -1250,7 +1226,7 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
           <View style={styles.pickerModalContent}>
             <View style={styles.pickerModalHeader}>
               <Text style={styles.pickerModalTitle}>
-                {receivingMethod === 'courier' ? 'Select Courier Carrier' : 'Select Return Transporter'}
+                {receivingMethod === 'courier' ? 'Choose Carrier' : 'Choose Transporter'}
               </Text>
               <TouchableOpacity
                 onPress={() => setIsCarrierPickerVisible(false)}
@@ -1260,35 +1236,98 @@ export default function CreateReturnScreen({ onCancel, onSaveReturn, outboundLis
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {(receivingMethod === 'courier' ? KNOWN_COURIERS : KNOWN_TRANSPORTERS).map(
-                (c, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={styles.simplePickerRow}
-                    onPress={() => {
-                      if (receivingMethod === 'courier') {
-                        setCourierCarrier(c);
-                      } else {
-                        setTransporter(c);
-                      }
-                      setIsCarrierPickerVisible(false);
-                    }}
-                  >
-                    <Ionicons
-                      name="paper-plane-outline"
-                      size={16}
-                      color="#6D43C0"
-                      style={{ marginRight: 10 }}
-                    />
-                    <Text style={styles.simplePickerText}>{c}</Text>
-                  </TouchableOpacity>
-                )
+            {/* Inline Add New Entity Form */}
+            <View style={styles.addEntityInputRow}>
+              <TextInput
+                style={styles.addEntityInput}
+                placeholder={
+                  receivingMethod === 'courier'
+                    ? 'Enter new carrier name...'
+                    : 'Enter new transporter name...'
+                }
+                placeholderTextColor="#9A93A7"
+                value={newLogisticsName}
+                onChangeText={setNewLogisticsName}
+              />
+              <TouchableOpacity
+                style={styles.addEntityBtn}
+                activeOpacity={0.7}
+                onPress={handleAddLogisticsEntity}
+              >
+                <Ionicons name="add" size={16} color="#FFFFFF" />
+                <Text style={styles.addEntityBtnText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
+              {(receivingMethod === 'courier' ? carrierList : transporterList).map((c, idx) => {
+                const isSelected =
+                  receivingMethod === 'courier' ? courierCarrier === c : transporter === c;
+                return (
+                  <View key={idx} style={styles.entityRowContainer}>
+                    <TouchableOpacity
+                      style={[styles.simplePickerRow, { flex: 1, borderBottomWidth: 0 }]}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (receivingMethod === 'courier') {
+                          setCourierCarrier(c);
+                        } else {
+                          setTransporter(c);
+                        }
+                        setIsCarrierPickerVisible(false);
+                      }}
+                    >
+                      <Ionicons
+                        name={receivingMethod === 'courier' ? 'cube-outline' : 'bus-outline'}
+                        size={16}
+                        color={isSelected ? '#6D43C0' : '#8A819F'}
+                        style={{ marginRight: 10 }}
+                      />
+                      <Text
+                        style={[
+                          styles.simplePickerText,
+                          isSelected && { color: '#6D43C0', fontWeight: '700' },
+                        ]}
+                      >
+                        {c}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.deleteEntityBtn}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={() => handleDeleteLogisticsEntity(c)}
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#E03137" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+
+              {(receivingMethod === 'courier' ? carrierList : transporterList).length === 0 && (
+                <View style={styles.emptyEntityContainer}>
+                  <Ionicons name="information-circle-outline" size={24} color="#9A93A7" />
+                  <Text style={styles.emptyEntityText}>
+                    {receivingMethod === 'courier'
+                      ? 'No carriers yet. Add a carrier above.'
+                      : 'No transporters yet. Add a transporter above.'}
+                  </Text>
+                </View>
               )}
             </ScrollView>
           </View>
         </View>
       </Modal>
+
+      {/* Universal Calendar Modal */}
+      <CommonCalendarModal
+        visible={isCalendarVisible}
+        onClose={() => setIsCalendarVisible(false)}
+        selectedDate={consignmentDate}
+        onSelectDate={(formatted) => setConsignmentDate(formatted)}
+        format="SLASH"
+      />
     </View>
   );
 }
@@ -2016,5 +2055,131 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     color: '#8B8498',
     marginTop: 2,
+  },
+  addEntityInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  addEntityInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: '#F9F8FC',
+    borderWidth: 1,
+    borderColor: '#D8D1E8',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: '#1E1B26',
+  },
+  addEntityBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6D43C0',
+    paddingHorizontal: 14,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+  },
+  addEntityBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+    marginLeft: 4,
+  },
+  entityRowContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EBF7',
+  },
+  deleteEntityBtn: {
+    padding: 8,
+    marginLeft: 4,
+  },
+  emptyEntityContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+  },
+  emptyEntityText: {
+    fontSize: 12,
+    color: '#8A819F',
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  tdProductInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D4CEE2',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    height: 36,
+  },
+  tdProductTextInput: {
+    flex: 1,
+    fontSize: 11,
+    color: '#211642',
+    fontWeight: '600',
+    padding: 0,
+  },
+  tdProductSkuText: {
+    fontSize: 9.5,
+    color: '#706584',
+    marginTop: 2,
+    marginLeft: 2,
+  },
+  zipDropdownCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginTop: 4,
+    marginBottom: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 6,
+    overflow: 'hidden',
+    zIndex: 9999,
+  },
+  zipDropdownScroll: {
+    maxHeight: 180,
+  },
+  zipDropdownItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
+  },
+  zipDropdownItemActive: {
+    backgroundColor: '#F8FAFC',
+  },
+  zipDropdownItemText: {
+    fontSize: 13,
+    color: '#1F2937',
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  zipDropdownItemSub: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  trackingBadgeSmall: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  trackingBadgeSmallText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

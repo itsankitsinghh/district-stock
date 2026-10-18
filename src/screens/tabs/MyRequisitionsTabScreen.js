@@ -151,19 +151,11 @@ export default function MyRequisitionsTabScreen({ session, onLogout, onNavigateT
       <View style={styles.header}>
         <View style={styles.headerTextCol}>
           <Text style={styles.headerTitle}>My Requisitions</Text>
-          <Text style={styles.headerSubtitle}>Track your event stock requests</Text>
+          <View style={styles.scopeRow}>
+            <View style={styles.scopeDot} />
+            <Text style={styles.headerSubtitle}>Track your event stock requests</Text>
+          </View>
         </View>
-
-        {onLogout && (
-          <TouchableOpacity
-            onPress={onLogout}
-            style={styles.logoutBtn}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="log-out-outline" size={14} color="#D8B4FE" />
-            <Text style={styles.logoutBtnText}>Logout</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       <ScrollView
@@ -568,34 +560,44 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F4FA',
   },
 
-  // --- Header (SVG width: 390, height: 76, fill: #17102F) ---
+  // --- Header on White Area ---
   header: {
-    height: 76,
-    backgroundColor: '#17102F',
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#251A46',
+    borderBottomColor: '#EDE8F5',
   },
   headerTextCol: {
     flex: 1,
     justifyContent: 'center',
   },
   headerTitle: {
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E1435',
+    letterSpacing: -0.3,
+  },
+  scopeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  scopeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#20C997',
+    marginRight: 6,
   },
   headerSubtitle: {
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-    fontSize: 10,
-    fontWeight: '400',
-    color: '#D8D0EA',
-    marginTop: 3,
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#706984',
   },
   logoutBtn: {
     flexDirection: 'row',
