@@ -10,6 +10,7 @@ import { authService } from './src/services/authService';
 import masterService from './src/services/masterService';
 import inboundService from './src/services/inboundService';
 import movementService from './src/services/movementService';
+import { storageHelper } from './src/services/storageHelper';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('splash');
@@ -27,6 +28,9 @@ export default function App() {
           inboundService.init(),
           movementService.init(),
         ]);
+        // Trigger background cloud sync with Render backend
+        storageHelper.syncWithCloud().catch(() => {});
+
         if (isMounted && authService.isSessionValid()) {
           const live = authService.getCurrentSession();
           if (live) {
@@ -54,6 +58,7 @@ export default function App() {
 
     const sub = AppState.addEventListener('change', async (nextState) => {
       if (nextState === 'active') {
+        storageHelper.syncWithCloud().catch(() => {});
         try {
           if (authService.isSessionValid()) {
             const live = authService.getCurrentSession();

@@ -602,8 +602,9 @@ export const authService = {
       };
     }
 
-    // Create session (omitting password hash) with 8-hour validity
+    // Create session with JWT & token persistence and 8-hour validity
     const now = Date.now();
+    const fallbackId = 'sess_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
     currentSession = {
       id: user.id,
       email: user.email,
@@ -615,12 +616,17 @@ export const authService = {
       assignedLocations: user.assignedLocations,
       hub: user.assignedLocations && user.assignedLocations.length > 0 ? user.assignedLocations[0] : 'Central Hub',
       accessCode: user.accessCode || user.userId || user.id,
+      sessionId: fallbackId,
+      accessToken: fallbackId,
+      refreshToken: fallbackId,
+      token: fallbackId,
       loginTime: new Date(now).toISOString(),
       loginTimestamp: now,
       expiresAt: now + SESSION_EXPIRY_MS, // 8-hour session lifetime
     };
 
     await this.saveSessionToStorage(currentSession);
+    this.syncSessionWithBackend(currentSession).catch(() => {});
 
     return {
       success: true,
@@ -691,6 +697,7 @@ export const authService = {
     }
 
     const now = Date.now();
+    const fallbackId = 'sess_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
     currentSession = {
       id: user.id,
       email: user.email,
@@ -702,17 +709,54 @@ export const authService = {
       assignedLocations: user.assignedLocations,
       hub: user.assignedLocations && user.assignedLocations.length > 0 ? user.assignedLocations[0] : 'Central Hub',
       accessCode: user.accessCode || raw,
+      sessionId: fallbackId,
+      accessToken: fallbackId,
+      refreshToken: fallbackId,
+      token: fallbackId,
       loginTime: new Date(now).toISOString(),
       loginTimestamp: now,
       expiresAt: now + SESSION_EXPIRY_MS, // 8-hour session lifetime
     };
 
     await this.saveSessionToStorage(currentSession);
+    this.syncSessionWithBackend(currentSession).catch(() => {});
 
     return {
       success: true,
       session: currentSession,
     };
+  },
+
+  /**
+   * Asynchronously synchronize session with Render / Supabase backend
+   */
+  async syncSessionWithBackend(session) {
+    if (!session) return;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch('https://district-stock-api.onrender.com/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: session.userId || session.id || session.email,
+          role: session.role || 'Admin',
+          sessionId: session.sessionId || null,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.session) {
+          session.sessionId = json.session.sessionId || session.sessionId;
+          session.accessToken = json.session.accessToken || session.accessToken;
+          session.refreshToken = json.session.refreshToken || session.refreshToken;
+          session.token = json.session.token || json.session.accessToken || session.token;
+          await this.saveSessionToStorage(session);
+        }
+      }
+    } catch (_) {}
   },
 
   /**

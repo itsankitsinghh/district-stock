@@ -18,6 +18,7 @@
  */
 
 import * as FileSystem from 'expo-file-system';
+import { cloudSyncService } from './cloudSyncService';
 
 const EXTERNAL_DOWNLOAD_DIR = 'file:///storage/emulated/0/Download/DistrictStock_Data/';
 const EXTERNAL_DOCS_DIR = 'file:///storage/emulated/0/Documents/DistrictStock_Data/';
@@ -225,6 +226,27 @@ export const storageHelper = {
     }
 
     await this.syncToAllVaults(filename, payload);
+
+    // Asynchronously push to Render cloud backend in background (never blocks UI)
+    try {
+      const collection = cloudSyncService.getCollectionForFilename(filename);
+      if (collection) {
+        cloudSyncService.pushCollection(collection, payload).catch((err) => {
+          console.warn(`[storageHelper] Background cloud push skipped for ${collection}:`, err.message);
+        });
+      }
+    } catch (_) {}
+  },
+
+  /**
+   * Run full bidirectional cloud synchronization
+   */
+  async syncWithCloud() {
+    try {
+      await cloudSyncService.syncAll(this);
+    } catch (e) {
+      console.warn('[storageHelper] syncWithCloud failed:', e.message);
+    }
   },
 
   /**

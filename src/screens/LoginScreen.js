@@ -20,6 +20,7 @@ import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import * as Network from 'expo-network';
 import { COLORS } from '../theme/colors';
 import { authService } from '../services/authService';
+import { storageHelper } from '../services/storageHelper';
 
 const { width } = Dimensions.get('window');
 
@@ -165,6 +166,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
       }
 
       if (onLoginSuccess) {
+        storageHelper.syncWithCloud().catch(() => {});
         onLoginSuccess(authResult.session);
       }
     } catch (err) {
@@ -209,6 +211,7 @@ export default function LoginScreen({ onLoginSuccess, onReplaySplash, onForgotPa
       }
 
       if (onLoginSuccess) {
+        storageHelper.syncWithCloud().catch(() => {});
         onLoginSuccess(codeResult.session);
       }
     } catch (err) {

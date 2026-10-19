@@ -38,6 +38,9 @@ yarn-error.*
 
 # generated native folders
 /ios
+
+# scratch
+scratch/
 /android
 *.apk
 *.bat
