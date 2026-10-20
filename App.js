@@ -28,8 +28,21 @@ export default function App() {
           inboundService.init(),
           movementService.init(),
         ]);
-        // Trigger background cloud sync with Render backend
-        storageHelper.syncWithCloud().catch(() => {});
+        // Trigger background cloud sync with Render backend and then refresh services
+        storageHelper.syncWithCloud().then(async () => {
+          try {
+            await Promise.all([
+              authService.init(true),
+              masterService.init(true),
+              inboundService.init(true),
+              movementService.init(true),
+            ]);
+            if (isMounted && authService.isSessionValid()) {
+              const live = authService.getCurrentSession();
+              if (live) setSession({ ...live });
+            }
+          } catch (_) {}
+        }).catch(() => {});
 
         if (isMounted && authService.isSessionValid()) {
           const live = authService.getCurrentSession();
@@ -58,7 +71,16 @@ export default function App() {
 
     const sub = AppState.addEventListener('change', async (nextState) => {
       if (nextState === 'active') {
-        storageHelper.syncWithCloud().catch(() => {});
+        storageHelper.syncWithCloud().then(async () => {
+          try {
+            await Promise.all([
+              authService.init(true),
+              masterService.init(true),
+              inboundService.init(true),
+              movementService.init(true),
+            ]);
+          } catch (_) {}
+        }).catch(() => {});
         try {
           if (authService.isSessionValid()) {
             const live = authService.getCurrentSession();

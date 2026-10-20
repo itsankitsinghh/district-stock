@@ -41,6 +41,9 @@ export default function CreateReturnScreen({ editingReturn, onCancel, onSaveRetu
     .filter((e) => (e.status || 'active').toLowerCase() === 'active')
     .map((e) => (typeof e === 'string' ? e : e.name || e.code));
 
+  const destinationWarehouseList = warehouseOptions;
+
+
   // Completed outbound list for dropdown selection (empty if no user-created outbounds)
   const completedOutbounds = Array.isArray(outboundList) ? outboundList : [];
 

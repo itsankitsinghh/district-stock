@@ -76,6 +76,10 @@ export default function CreateTransferScreen({
     (w) => w.toLowerCase().trim() !== (source || '').toLowerCase().trim()
   );
 
+  const sourceWarehouseList = warehouseOptions;
+  const destinationOptions = destWarehouseOptions;
+
+
   const handleSelectSource = (newSource) => {
     setSource(newSource);
     setIsSourcePickerVisible(false);

@@ -250,6 +250,21 @@ export const storageHelper = {
   },
 
   /**
+   * Compatibility alias for readData
+   */
+  async loadData(filename, defaultValue = null) {
+    return this.readData(filename, defaultValue);
+  },
+
+  /**
+   * Compatibility alias for writeData
+   */
+  async saveData(filename, data) {
+    return this.writeData(filename, data);
+  },
+
+
+  /**
    * Synchronize payload across all local & persistent vaults
    */
   async syncToAllVaults(filename, data) {

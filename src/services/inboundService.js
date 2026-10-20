@@ -64,15 +64,14 @@ class InboundService {
   /**
    * Initialize service and load persistent data from disk
    */
-  async init() {
-    if (this.isInitialized) return this.inbounds;
+  async init(forceReload = false) {
+    if (this.isInitialized && !forceReload) return this.inbounds;
 
     try {
       const parsed = await storageHelper.readData(INBOUND_STORAGE_FILENAME, null);
       if (Array.isArray(parsed)) {
         this.inbounds = parsed;
       } else {
-        // Table starts empty if no previous data
         this.inbounds = [];
       }
     } catch (err) {
@@ -81,6 +80,7 @@ class InboundService {
     }
 
     this.isInitialized = true;
+    this.notifySubscribers();
     return this.inbounds;
   }
 

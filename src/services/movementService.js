@@ -47,15 +47,15 @@ class MovementService {
     });
   }
 
-  async init() {
-    if (this.isInitialized) {
+  async init(forceReload = false) {
+    if (this.isInitialized && !forceReload) {
       return {
         outbounds: this.outbounds,
         transfers: this.transfers,
         returns: this.returns,
       };
     }
-    if (this.initPromise) return this.initPromise;
+    if (this.initPromise && !forceReload) return this.initPromise;
 
     this.initPromise = (async () => {
       try {
@@ -70,6 +70,7 @@ class MovementService {
       } finally {
         this.isInitialized = true;
         this.initPromise = null;
+        this.notifySubscribers();
       }
       return {
         outbounds: this.outbounds,

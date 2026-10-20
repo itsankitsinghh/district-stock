@@ -54,7 +54,7 @@ class CarrierService {
 
     this.initPromise = (async () => {
       try {
-        const loaded = await storageHelper.loadData(CARRIERS_STORAGE_FILE, {
+        const loaded = await storageHelper.readData(CARRIERS_STORAGE_FILE, {
           carriers: [],
           transporters: [],
         });
@@ -80,7 +80,7 @@ class CarrierService {
 
   async persist() {
     try {
-      await storageHelper.saveData(CARRIERS_STORAGE_FILE, {
+      await storageHelper.writeData(CARRIERS_STORAGE_FILE, {
         carriers: this.carriers,
         transporters: this.transporters,
       });

@@ -132,14 +132,80 @@ function verifyJwt(token) {
 // Database Query Helpers
 // ==========================================
 
+function mergeUnique(listA = [], listB = [], keys = ['id']) {
+  const map = new Map();
+  const getKey = (item) => {
+    if (!item || typeof item !== 'object') return null;
+    for (const k of keys) {
+      if (item[k]) return String(item[k]).toLowerCase().trim();
+    }
+    return null;
+  };
+  (listA || []).forEach((item) => {
+    const k = getKey(item);
+    if (k) map.set(k, item);
+  });
+  (listB || []).forEach((item) => {
+    const k = getKey(item);
+    if (k) {
+      const existing = map.get(k);
+      map.set(k, existing ? { ...existing, ...item } : item);
+    }
+  });
+  return Array.from(map.values());
+}
+
 async function getFromDb(collectionName) {
   try {
     if (collectionName === 'master') {
+      let masterObj = { warehouses: [], products: [], events: [], requisitions: [] };
       const res = await pool.query("SELECT key, data FROM public.master WHERE key = 'master_data' LIMIT 1;");
+      if (res.rows.length > 0 && res.rows[0].data && typeof res.rows[0].data === 'object') {
+        masterObj = { ...masterObj, ...res.rows[0].data };
+      }
+      try {
+        const whRes = await pool.query('SELECT raw_data FROM public.warehouses ORDER BY created_at DESC;');
+        if (whRes.rows.length > 0) {
+          const dbWhs = whRes.rows.map((r) => r.raw_data).filter(Boolean);
+          masterObj.warehouses = mergeUnique(masterObj.warehouses, dbWhs, ['id', 'code', 'name']);
+        }
+        const prRes = await pool.query('SELECT raw_data FROM public.products ORDER BY created_at DESC;');
+        if (prRes.rows.length > 0) {
+          const dbPrs = prRes.rows.map((r) => r.raw_data).filter(Boolean);
+          masterObj.products = mergeUnique(masterObj.products, dbPrs, ['id', 'code', 'sku', 'name']);
+        }
+        const evRes = await pool.query('SELECT raw_data FROM public.events ORDER BY created_at DESC;');
+        if (evRes.rows.length > 0) {
+          const dbEvs = evRes.rows.map((r) => r.raw_data).filter(Boolean);
+          masterObj.events = mergeUnique(masterObj.events, dbEvs, ['id', 'code', 'name']);
+        }
+        const reqRes = await pool.query('SELECT raw_data FROM public.requisitions ORDER BY created_at DESC;');
+        if (reqRes.rows.length > 0) {
+          const dbReqs = reqRes.rows.map((r) => r.raw_data).filter(Boolean);
+          masterObj.requisitions = mergeUnique(masterObj.requisitions, dbReqs, ['id', 'requisitionNo']);
+        }
+      } catch (_) {}
+      return masterObj;
+    }
+
+    if (collectionName === 'movements') {
+      const res = await pool.query("SELECT key, data FROM public.master WHERE key = 'movements_data' LIMIT 1;");
+      if (res.rows.length > 0 && res.rows[0].data && typeof res.rows[0].data === 'object') {
+        return res.rows[0].data;
+      }
+      const rawRes = await pool.query('SELECT raw_data FROM public.movements ORDER BY created_at DESC;');
+      if (rawRes.rows.length > 0) {
+        return rawRes.rows.map((r) => r.raw_data).filter(Boolean);
+      }
+      return readLocalCollection('movements');
+    }
+
+    if (collectionName === 'logistics' || collectionName === 'carriers') {
+      const res = await pool.query("SELECT key, data FROM public.master WHERE key = 'logistics_data' LIMIT 1;");
       if (res.rows.length > 0 && res.rows[0].data) {
         return res.rows[0].data;
       }
-      return readLocalCollection('master');
+      return readLocalCollection('logistics');
     }
 
     const res = await pool.query(`SELECT raw_data FROM public.${collectionName} ORDER BY created_at DESC;`);
@@ -161,6 +227,50 @@ async function saveToDb(collectionName, items) {
       await pool.query(
         `INSERT INTO public.master (key, data, updated_at) 
          VALUES ('master_data', $1, NOW()) 
+         ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();`,
+        [JSON.stringify(items)]
+      );
+      if (items && typeof items === 'object') {
+        if (Array.isArray(items.warehouses) && items.warehouses.length > 0) {
+          await saveToDb('warehouses', items.warehouses);
+        }
+        if (Array.isArray(items.products) && items.products.length > 0) {
+          await saveToDb('products', items.products);
+        }
+        if (Array.isArray(items.events) && items.events.length > 0) {
+          await saveToDb('events', items.events);
+        }
+        if (Array.isArray(items.requisitions) && items.requisitions.length > 0) {
+          await saveToDb('requisitions', items.requisitions);
+        }
+      }
+      return true;
+    }
+
+    if (collectionName === 'movements') {
+      if (items && typeof items === 'object' && !Array.isArray(items)) {
+        await pool.query(
+          `INSERT INTO public.master (key, data, updated_at) 
+           VALUES ('movements_data', $1, NOW()) 
+           ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();`,
+          [JSON.stringify(items)]
+        );
+        const flattened = [
+          ...(Array.isArray(items.outbounds) ? items.outbounds : []),
+          ...(Array.isArray(items.transfers) ? items.transfers : []),
+          ...(Array.isArray(items.returns) ? items.returns : []),
+        ];
+        if (flattened.length > 0) {
+          await saveToDb('movements', flattened);
+        }
+        return true;
+      }
+    }
+
+    if (collectionName === 'logistics' || collectionName === 'carriers') {
+      await pool.query(
+        `INSERT INTO public.master (key, data, updated_at) 
+         VALUES ('logistics_data', $1, NOW()) 
          ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();`,
         [JSON.stringify(items)]
       );
@@ -263,6 +373,7 @@ async function saveToDb(collectionName, items) {
     return false;
   }
 }
+
 
 // Helper to parse JSON request body
 function parseJsonBody(req) {

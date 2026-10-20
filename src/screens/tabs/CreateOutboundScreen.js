@@ -48,6 +48,10 @@ export default function CreateOutboundScreen({
     .filter((e) => (e.status || 'active').toLowerCase() === 'active')
     .map((e) => (typeof e === 'string' ? e : e.name || e.code));
 
+  const sourceWarehouseList = warehouseOptions;
+  const destinationEventList = eventOptions;
+
+
   // Default Source from Dashboard Warehouse selection or first accessible warehouse
   const dashboardSelectedWh =
     selectedDashboardWarehouse && selectedDashboardWarehouse !== 'ALL'
