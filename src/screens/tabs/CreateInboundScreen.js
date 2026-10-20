@@ -2239,7 +2239,7 @@ function ScanSerialNumberScreen({ item, refNo, onBack, onSave }) {
     ).start();
   }, [laserAnim]);
 
-  const maxExpected = parseInt(item.receivedQty, 10) || 0;
+  const maxExpected = parseInt(item.receivedQty, 10) || parseInt(item.expectedQty, 10) || parseInt(item.qty, 10) || 0;
 
   // Barcode scanned callback
   const handleBarcodeScanned = ({ data }) => {
@@ -2302,8 +2302,9 @@ function ScanSerialNumberScreen({ item, refNo, onBack, onSave }) {
     onSave(scannedSerials);
   };
 
-  const expectedQty = item.expectedQty ? Number(item.expectedQty) : 1000;
-  const remainingQty = Math.max(0, expectedQty - scannedSerials.length);
+  const enteredQty = maxExpected;
+  const expectedQty = enteredQty;
+  const remainingQty = enteredQty > 0 ? Math.max(0, enteredQty - scannedSerials.length) : 0;
   const hasCameraPermission = permission?.granted;
 
   return (
@@ -2551,7 +2552,7 @@ function ScanSerialNumberScreen({ item, refNo, onBack, onSave }) {
         {/* Col 1: Expected Qty */}
         <View style={styles.scannerStatCol}>
           <Text style={styles.scannerStatLabel}>Expected Qty</Text>
-          <Text style={styles.scannerStatValueWhite}>{expectedQty}</Text>
+          <Text style={styles.scannerStatValueWhite}>{enteredQty > 0 ? enteredQty : '-'}</Text>
         </View>
 
         <View style={styles.scannerStatDivider} />
@@ -2573,7 +2574,7 @@ function ScanSerialNumberScreen({ item, refNo, onBack, onSave }) {
             <Ionicons name="time" size={12} color="#FBBF24" style={{ marginRight: 4 }} />
             <Text style={[styles.scannerStatLabel, { color: '#FBBF24' }]}>Remaining</Text>
           </View>
-          <Text style={styles.scannerStatValueWhite}>{remainingQty}</Text>
+          <Text style={styles.scannerStatValueWhite}>{enteredQty > 0 ? remainingQty : '-'}</Text>
         </View>
       </View>
 

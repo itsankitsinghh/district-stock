@@ -442,29 +442,13 @@ export default function MovementTabScreen({ session, onLogout, selectedDashboard
 
   // Helper to ensure line items exist for putaway
   const getRowProductLines = (row) => {
-    if (row?.productLines && row.productLines.length > 0) {
+    if (Array.isArray(row?.productLines) && row.productLines.length > 0) {
       return row.productLines;
     }
-    const isCompleted = (row?.status || '').toUpperCase() === 'COMPLETED';
-    const isPutaway = (row?.status || '').toUpperCase() === 'PUTAWAY';
-    return [
-      {
-        id: 'p1',
-        productName: 'Professional Stage Audio Monitor (15")',
-        expectedQty: 10,
-        receivedQty: isCompleted ? 10 : (isPutaway ? 6 : 0),
-        uom: 'Units',
-        sku: 'MIC-WL-900',
-      },
-      {
-        id: 'p2',
-        productName: 'Heavy-Duty Stage Audio Line Array Cable',
-        expectedQty: 25,
-        receivedQty: isCompleted ? 25 : (isPutaway ? 12 : 0),
-        uom: 'Pieces',
-        sku: 'CBL-XLR-20M',
-      },
-    ];
+    if (Array.isArray(row?.items) && row.items.length > 0) {
+      return row.items;
+    }
+    return [];
   };
 
   // Update record status and fields across state
@@ -526,16 +510,30 @@ export default function MovementTabScreen({ session, onLogout, selectedDashboard
     const currentLines = getRowProductLines(selectedRow);
     const parsedQty = Math.max(0, parseInt(newQtyStr, 10) || 0);
 
-    const updatedLines = currentLines.map((line, idx) =>
-      idx === lineIndex ? { ...line, receivedQty: parsedQty } : line
-    );
+    const updatedLines = currentLines.map((line, idx) => {
+      if (idx !== lineIndex) return line;
+      const target = parseInt(line.expectedQty || line.receivedQty, 10) || parsedQty;
+      return {
+        ...line,
+        expectedQty: target,
+        putawayQty: parsedQty,
+        remainingQty: Math.max(0, target - parsedQty),
+        receivedQty: parsedQty,
+      };
+    });
 
-    const allCompleted = updatedLines.length > 0 && updatedLines.every(
-      (l) => (parseInt(l.receivedQty, 10) || 0) >= (parseInt(l.expectedQty, 10) || 1)
-    );
-    const hasAnyPutaway = updatedLines.some(
-      (l) => (parseInt(l.receivedQty, 10) || 0) > 0
-    );
+    const allCompleted =
+      updatedLines.length > 0 &&
+      updatedLines.every((l) => {
+        const target = parseInt(l.expectedQty || l.receivedQty, 10) || 0;
+        const done = parseInt(l.putawayQty !== undefined ? l.putawayQty : l.receivedQty, 10) || 0;
+        return target > 0 && done >= target;
+      });
+
+    const hasAnyPutaway = updatedLines.some((l) => {
+      const done = parseInt(l.putawayQty !== undefined ? l.putawayQty : l.receivedQty, 10) || 0;
+      return done > 0;
+    });
 
     let newStatus = selectedRow.status;
     if (allCompleted) {
@@ -554,8 +552,9 @@ export default function MovementTabScreen({ session, onLogout, selectedDashboard
     if (!selectedRow) return;
     const currentLines = getRowProductLines(selectedRow);
     const line = currentLines[lineIndex];
-    const cur = parseInt(line.receivedQty, 10) || 0;
-    const max = parseInt(line.expectedQty, 10) || 1;
+    if (!line) return;
+    const cur = parseInt(line.putawayQty !== undefined ? line.putawayQty : line.receivedQty, 10) || 0;
+    const max = parseInt(line.expectedQty || line.receivedQty, 10) || (cur + 1);
     const nextQty = Math.min(max, cur + 1);
     handlePutawayQtyChange(lineIndex, nextQty);
   };
@@ -564,10 +563,16 @@ export default function MovementTabScreen({ session, onLogout, selectedDashboard
   const handleCompleteAllPutaway = () => {
     if (!selectedRow) return;
     const currentLines = getRowProductLines(selectedRow);
-    const updatedLines = currentLines.map((l) => ({
-      ...l,
-      receivedQty: l.expectedQty,
-    }));
+    const updatedLines = currentLines.map((l) => {
+      const target = parseInt(l.expectedQty || l.receivedQty, 10) || 1;
+      return {
+        ...l,
+        expectedQty: target,
+        putawayQty: target,
+        receivedQty: target,
+        remainingQty: 0,
+      };
+    });
     handleUpdateRecordStatus(selectedRow.id, 'COMPLETED', { productLines: updatedLines });
     Alert.alert(
       'Putaway Completed',
@@ -1555,83 +1560,91 @@ export default function MovementTabScreen({ session, onLogout, selectedDashboard
                       )}
                     </View>
 
-                    {getRowProductLines(selectedRow).map((line, idx) => {
-                      const isLineComplete = (parseInt(line.receivedQty, 10) || 0) >= (parseInt(line.expectedQty, 10) || 1);
-                      return (
-                        <View key={line.id || idx} style={styles.putawayItemCard}>
-                          <View style={styles.putawayItemTopRow}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.putawayItemName} numberOfLines={1}>
-                                {idx + 1}. {line.productName}
-                              </Text>
-                              <Text style={styles.putawayItemSku}>
-                                SKU: {line.sku || 'N/A'} • Expected: {line.expectedQty} {line.uom}
-                              </Text>
-                            </View>
-                            <View
-                              style={[
-                                styles.putawayLineStatusBadge,
-                                isLineComplete
-                                  ? styles.putawayLineStatusComplete
-                                  : styles.putawayLineStatusPending,
-                              ]}
-                            >
-                              <Text
+                    {getRowProductLines(selectedRow).length === 0 ? (
+                      <View style={{ padding: 16, alignItems: 'center' }}>
+                        <Text style={{ color: '#94A3B8', fontSize: 13 }}>
+                          No product lines found for this inbound record.
+                        </Text>
+                      </View>
+                    ) : (
+                      getRowProductLines(selectedRow).map((line, idx) => {
+                        const targetQty = parseInt(line.expectedQty || line.receivedQty, 10) || 0;
+                        const curPutaway = parseInt(line.putawayQty !== undefined ? line.putawayQty : line.receivedQty, 10) || 0;
+                        const isLineComplete = targetQty > 0 && curPutaway >= targetQty;
+                        return (
+                          <View key={line.id || idx} style={styles.putawayItemCard}>
+                            <View style={styles.putawayItemTopRow}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.putawayItemName} numberOfLines={1}>
+                                  {idx + 1}. {line.productName}
+                                </Text>
+                                <Text style={styles.putawayItemSku}>
+                                  SKU: {line.sku || 'N/A'} • Expected: {targetQty} {line.uom || ''}
+                                </Text>
+                              </View>
+                              <View
                                 style={[
-                                  styles.putawayLineStatusText,
-                                  isLineComplete ? { color: '#03543F' } : { color: '#D97706' },
+                                  styles.putawayLineStatusBadge,
+                                  isLineComplete
+                                    ? styles.putawayLineStatusComplete
+                                    : styles.putawayLineStatusPending,
                                 ]}
                               >
-                                {line.receivedQty} / {line.expectedQty}
-                              </Text>
-                            </View>
-                          </View>
-
-                          {/* Stepper Input & Scan Controls */}
-                          <View style={styles.putawayControlsRow}>
-                            <View style={styles.putawayStepperBox}>
-                              <TouchableOpacity
-                                style={styles.putawayStepBtn}
-                                onPress={() => {
-                                  const cur = parseInt(line.receivedQty, 10) || 0;
-                                  handlePutawayQtyChange(idx, Math.max(0, cur - 1));
-                                }}
-                              >
-                                <Ionicons name="remove" size={16} color="#6D43C0" />
-                              </TouchableOpacity>
-
-                              <TextInput
-                                style={styles.putawayQtyInput}
-                                keyboardType="number-pad"
-                                value={String(line.receivedQty ?? 0)}
-                                onChangeText={(text) => handlePutawayQtyChange(idx, text)}
-                                selectTextOnFocus={true}
-                              />
-
-                              <TouchableOpacity
-                                style={styles.putawayStepBtn}
-                                onPress={() => {
-                                  const cur = parseInt(line.receivedQty, 10) || 0;
-                                  handlePutawayQtyChange(idx, cur + 1);
-                                }}
-                              >
-                                <Ionicons name="add" size={16} color="#6D43C0" />
-                              </TouchableOpacity>
+                                <Text
+                                  style={[
+                                    styles.putawayLineStatusText,
+                                    isLineComplete ? { color: '#03543F' } : { color: '#D97706' },
+                                  ]}
+                                >
+                                  {curPutaway} / {targetQty}
+                                </Text>
+                              </View>
                             </View>
 
-                            {/* Scan +1 Barcode Button */}
-                            <TouchableOpacity
-                              style={styles.scanAddBtn}
-                              activeOpacity={0.8}
-                              onPress={() => handleScanPutawayItem(idx)}
-                            >
-                              <Ionicons name="barcode-outline" size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
-                              <Text style={styles.scanAddBtnText}>Scan +1</Text>
-                            </TouchableOpacity>
+                            {/* Stepper Input & Scan Controls */}
+                            <View style={styles.putawayControlsRow}>
+                              <View style={styles.putawayStepperBox}>
+                                <TouchableOpacity
+                                  style={styles.putawayStepBtn}
+                                  onPress={() => {
+                                    handlePutawayQtyChange(idx, Math.max(0, curPutaway - 1));
+                                  }}
+                                >
+                                  <Ionicons name="remove" size={16} color="#6D43C0" />
+                                </TouchableOpacity>
+
+                                <TextInput
+                                  style={styles.putawayQtyInput}
+                                  keyboardType="number-pad"
+                                  value={String(curPutaway)}
+                                  onChangeText={(text) => handlePutawayQtyChange(idx, text)}
+                                  selectTextOnFocus={true}
+                                />
+
+                                <TouchableOpacity
+                                  style={styles.putawayStepBtn}
+                                  onPress={() => {
+                                    handlePutawayQtyChange(idx, curPutaway + 1);
+                                  }}
+                                >
+                                  <Ionicons name="add" size={16} color="#6D43C0" />
+                                </TouchableOpacity>
+                              </View>
+
+                              {/* Scan +1 Barcode Button */}
+                              <TouchableOpacity
+                                style={styles.scanAddBtn}
+                                activeOpacity={0.8}
+                                onPress={() => handleScanPutawayItem(idx)}
+                              >
+                                <Ionicons name="barcode-outline" size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
+                                <Text style={styles.scanAddBtnText}>Scan +1</Text>
+                              </TouchableOpacity>
+                            </View>
                           </View>
-                        </View>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </View>
 
                   {/* Documents Section */}
