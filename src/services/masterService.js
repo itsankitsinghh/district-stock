@@ -47,8 +47,8 @@ class MasterService {
     });
   }
 
-  async init() {
-    if (this.isInitialized) return;
+  async init(forceReload = false) {
+    if (this.isInitialized && !forceReload) return;
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
@@ -496,6 +496,7 @@ class MasterService {
       planner: data.planner || 'Sneha Patil',
     };
     this.requisitions.unshift(newReq);
+    this.persist();
     return newReq;
   }
 
@@ -504,6 +505,7 @@ class MasterService {
     const req = this.requisitions.find((r) => r.id === id);
     if (req) {
       req.status = newStatus;
+      this.persist();
       return req;
     }
     return null;
@@ -525,6 +527,7 @@ class MasterService {
       status: 'active',
     };
     this.categories.push(newCat);
+    this.persist();
     return { success: true, category: newCat };
   }
 
@@ -533,6 +536,7 @@ class MasterService {
     if (idx === -1) return { success: false };
     const current = this.categories[idx].status;
     this.categories[idx].status = current === 'active' ? 'inactive' : 'active';
+    this.persist();
     return { success: true, status: this.categories[idx].status };
   }
 
@@ -540,6 +544,7 @@ class MasterService {
     const idx = this.categories.findIndex((c) => c.id === id);
     if (idx === -1) return { success: false };
     this.categories.splice(idx, 1);
+    this.persist();
     return { success: true };
   }
 
@@ -560,6 +565,7 @@ class MasterService {
       status: 'active',
     };
     this.productTypes.push(newPt);
+    this.persist();
     return { success: true, productType: newPt };
   }
 
@@ -568,6 +574,7 @@ class MasterService {
     if (idx === -1) return { success: false };
     const current = this.productTypes[idx].status;
     this.productTypes[idx].status = current === 'active' ? 'inactive' : 'active';
+    this.persist();
     return { success: true, status: this.productTypes[idx].status };
   }
 
@@ -595,6 +602,7 @@ class MasterService {
     };
     if (!this.stockActionLogs) this.stockActionLogs = [];
     this.stockActionLogs.unshift(log);
+    this.persist();
 
     return { success: true, product: p, log };
   }
@@ -621,6 +629,7 @@ class MasterService {
     };
     if (!this.stockActionLogs) this.stockActionLogs = [];
     this.stockActionLogs.unshift(log);
+    this.persist();
 
     return { success: true, product: p, log };
   }
@@ -695,6 +704,7 @@ class MasterService {
       fileSize: `${(Math.random() * 3 + 0.5).toFixed(1)} MB`,
     };
     this.reportsHistory.unshift(newReport);
+    this.persist();
     return newReport;
   }
 
@@ -703,6 +713,7 @@ class MasterService {
     const idx = this.reportsHistory.findIndex((r) => r.id === id);
     if (idx !== -1) {
       this.reportsHistory.splice(idx, 1);
+      this.persist();
       return true;
     }
     return false;
@@ -726,6 +737,7 @@ class MasterService {
       lastRun: 'Scheduled',
     };
     this.scheduledReports.unshift(newSchedule);
+    this.persist();
     return newSchedule;
   }
 
@@ -734,6 +746,7 @@ class MasterService {
     const item = this.scheduledReports.find((s) => s.id === id);
     if (item) {
       item.status = item.status === 'Active' ? 'Paused' : 'Active';
+      this.persist();
       return item.status;
     }
     return null;

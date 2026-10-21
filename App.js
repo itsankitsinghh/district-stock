@@ -10,6 +10,7 @@ import { authService } from './src/services/authService';
 import masterService from './src/services/masterService';
 import inboundService from './src/services/inboundService';
 import movementService from './src/services/movementService';
+import carrierService from './src/services/carrierService';
 import { storageHelper } from './src/services/storageHelper';
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
           masterService.init(),
           inboundService.init(),
           movementService.init(),
+          carrierService.init(),
         ]);
         // Trigger background cloud sync with Render backend and then refresh services
         storageHelper.syncWithCloud().then(async () => {
@@ -36,6 +38,7 @@ export default function App() {
               masterService.init(true),
               inboundService.init(true),
               movementService.init(true),
+              carrierService.init(true),
             ]);
             if (isMounted && authService.isSessionValid()) {
               const live = authService.getCurrentSession();
@@ -78,6 +81,7 @@ export default function App() {
               masterService.init(true),
               inboundService.init(true),
               movementService.init(true),
+              carrierService.init(true),
             ]);
           } catch (_) {}
         }).catch(() => {});
