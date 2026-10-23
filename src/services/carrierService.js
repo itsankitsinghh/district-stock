@@ -43,8 +43,8 @@ class CarrierService {
     });
   }
 
-  async init() {
-    if (this.isInitialized) {
+  async init(forceReload = false) {
+    if (this.isInitialized && !forceReload) {
       return {
         carriers: this.carriers,
         transporters: this.transporters,
@@ -68,6 +68,8 @@ class CarrierService {
         this.transporters = [];
       } finally {
         this.isInitialized = true;
+        this.initPromise = null;
+        this.notifySubscribers();
       }
       return {
         carriers: this.carriers,

@@ -87,7 +87,18 @@ export const cloudSyncService = {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
-      return res.ok;
+      if (!res.ok) {
+        // The server answers 503 when it cannot reach its database: the data was NOT saved.
+        console.warn(`[cloudSync] Push rejected for ${collectionName}: HTTP ${res.status}`);
+        return false;
+      }
+      try {
+        const result = await res.json();
+        if (result && Array.isArray(result.failed) && result.failed.length > 0) {
+          console.warn(`[cloudSync] ${result.failed.length} ${collectionName} record(s) were rejected by the database:`, result.failed);
+        }
+      } catch (_) {}
+      return true;
     } catch (e) {
       console.warn(`[cloudSync] Push failed for ${collectionName}:`, e.message);
       return false;
@@ -150,20 +161,31 @@ export const cloudSyncService = {
 
       // 1. Sync Master Data (Warehouses, Products, Events, Requisitions)
       try {
+        // Fetch from the cloud FIRST, then read local data right before merging and writing, so a
+        // change the user makes while the (slow) network call is in flight is not overwritten.
+        const cloudMaster = await this.fetchCollection('master');
         const localMaster =
           (await storageHelper.readData('district_stock_master_v1.json', null)) ||
           (await storageHelper.readData('master_data.json', { warehouses: [], products: [], events: [], requisitions: [] }));
 
-        const cloudMaster = await this.fetchCollection('master');
         if (cloudMaster && typeof cloudMaster === 'object') {
+          // Lists that only live in the master blob. Merge both sides (instead of local-wins) so a
+          // fresh install does not drop what the cloud has and then push that loss back to the cloud.
+          const mergeOptional = (key, keys) => {
+            const merged = this.mergeLists(localMaster[key] || [], cloudMaster[key] || [], keys);
+            return merged.length > 0 ? { [key]: merged } : {};
+          };
           const mergedMaster = {
             ...(localMaster || {}),
             warehouses: this.mergeLists(localMaster.warehouses || [], cloudMaster.warehouses || [], ['id', 'code', 'name']),
             products: this.mergeLists(localMaster.products || [], cloudMaster.products || [], ['id', 'code', 'sku', 'name']),
             events: this.mergeLists(localMaster.events || [], cloudMaster.events || [], ['id', 'code', 'name']),
             requisitions: this.mergeLists(localMaster.requisitions || [], cloudMaster.requisitions || [], ['id', 'requisitionNo']),
-            categories: localMaster.categories || cloudMaster.categories || [],
-            productTypes: localMaster.productTypes || cloudMaster.productTypes || [],
+            ...mergeOptional('categories', ['id', 'name']),
+            ...mergeOptional('productTypes', ['id', 'name']),
+            ...mergeOptional('stockActionLogs', ['id']),
+            ...mergeOptional('reportsHistory', ['id']),
+            ...mergeOptional('scheduledReports', ['id']),
           };
           await storageHelper.syncToAllVaults('district_stock_master_v1.json', mergedMaster);
           await storageHelper.syncToAllVaults('master_data.json', mergedMaster);
@@ -177,11 +199,11 @@ export const cloudSyncService = {
 
       // 2. Sync Users
       try {
+        const cloudUsers = await this.fetchCollection('users');
         const localUsers =
           (await storageHelper.readData('district_stock_users_v1.json', null)) ||
           (await storageHelper.readData('users.json', []));
 
-        const cloudUsers = await this.fetchCollection('users');
         if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
           const mergedUsers = this.mergeLists(
             localUsers || [],
@@ -200,11 +222,11 @@ export const cloudSyncService = {
 
       // 3. Sync Inbounds
       try {
+        const cloudInbounds = await this.fetchCollection('inbounds');
         const localInbounds =
           (await storageHelper.readData('district_stock_inbound_v1.json', null)) ||
           (await storageHelper.readData('inbound_data.json', []));
 
-        const cloudInbounds = await this.fetchCollection('inbounds');
         if (Array.isArray(cloudInbounds) && cloudInbounds.length > 0) {
           const mergedInbounds = this.mergeLists(
             localInbounds || [],
@@ -223,11 +245,11 @@ export const cloudSyncService = {
 
       // 4. Sync Movements (Outbounds, Transfers, Returns)
       try {
+        const cloudMovements = await this.fetchCollection('movements');
         const localMovements =
           (await storageHelper.readData('district_stock_movements_v1.json', null)) ||
           (await storageHelper.readData('movement_data.json', { outbounds: [], transfers: [], returns: [] }));
 
-        const cloudMovements = await this.fetchCollection('movements');
         if (cloudMovements && typeof cloudMovements === 'object') {
           const localOut = Array.isArray(localMovements) ? localMovements : (localMovements.outbounds || []);
           const localTr = Array.isArray(localMovements) ? [] : (localMovements.transfers || []);
@@ -255,8 +277,8 @@ export const cloudSyncService = {
 
       // 5. Sync Logistics (Carriers & Transporters)
       try {
-        const localLogistics = await storageHelper.readData('district_stock_logistics_carriers_v1.json', { carriers: [], transporters: [] });
         const cloudLogistics = await this.fetchCollection('logistics');
+        const localLogistics = await storageHelper.readData('district_stock_logistics_carriers_v1.json', { carriers: [], transporters: [] });
         if (cloudLogistics && typeof cloudLogistics === 'object') {
           const mergedLogistics = {
             carriers: Array.from(new Set([...(localLogistics.carriers || []), ...(cloudLogistics.carriers || [])])),

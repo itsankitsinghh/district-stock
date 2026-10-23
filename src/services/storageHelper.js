@@ -17,7 +17,9 @@
  * Includes Anti-Wipe Shield: Never permits an empty state to overwrite populated existing records!
  */
 
-import * as FileSystem from 'expo-file-system';
+// SDK 57 removed the path-based API (getInfoAsync, readAsStringAsync, documentDirectory, ...) from the
+// main entry: they throw there. They live on in "expo-file-system/legacy".
+import * as FileSystem from 'expo-file-system/legacy';
 import { cloudSyncService } from './cloudSyncService';
 
 const EXTERNAL_DOWNLOAD_DIR = 'file:///storage/emulated/0/Download/DistrictStock_Data/';

@@ -11,7 +11,7 @@
  * 4. Passwords are never stored in plain text.
  */
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { storageHelper } from './storageHelper';
 
 // Portable pure-JavaScript SHA-256 implementation

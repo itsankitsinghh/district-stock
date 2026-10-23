@@ -3,22 +3,19 @@
  * 
  * Powered by Node.js + Supabase PostgreSQL
  * Features:
- * - Persistent PostgreSQL storage on Supabase
+ * - Persistent PostgreSQL storage on Supabase (the database is the only source of truth)
  * - JWT Access Token & Refresh Token generation and verification
  * - Persistent Session ID tracking in database
  * - Bidirectional Cloud Sync for offline-first mobile clients
- * - Local storage fallback for zero downtime
+ * - Honest error reporting: a failed database write is returned to the client as an error
  */
 
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 const url = require('url');
 const crypto = require('crypto');
 const { Pool } = require('pg');
 
 const PORT = process.env.PORT || 10000;
-const DATA_DIR = path.join(__dirname, 'server_data');
 
 // Supabase PostgreSQL Connection
 const DB_URL = process.env.DATABASE_URL || 'postgresql://postgres:AnkitSheetal%402003@db.xiojkhfuyjkklfopwjec.supabase.co:5432/postgres';
@@ -28,46 +25,117 @@ const JWT_SECRET = process.env.JWT_SECRET || 'district-stock-secret-jwt-key-2026
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xiojkhfuyjkklfopwjec.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhpb2praGZ1eWpra2xmb3B3amVjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MjMzMDUwMCwiZXhwIjoyMTA3OTA2NTAwfQ.KnP4vnJPEDUViokonVqGMfakDE6btkFHtOUYGzLe29g';
 
-// PostgreSQL Connection Pool
-const pool = new Pool({
-  connectionString: DB_URL,
-  ssl: { rejectUnauthorized: false },
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-});
+// ==========================================
+// Database connection manager
+// ==========================================
+//
+// The "direct" Supabase host (db.<project-ref>.supabase.co) only has an IPv6 address, and
+// Render can only make outbound IPv4 connections, so it can never connect from Render.
+// That is why nothing was ever saved. The Supabase Session pooler is IPv4-capable, so we
+// derive its address from the same project/credentials and try it first. The region can be
+// overridden with SUPABASE_POOLER_REGION.
+const SUPABASE_POOLER_REGION = process.env.SUPABASE_POOLER_REGION || 'ap-southeast-1';
 
-pool.on('error', (err) => {
-  console.error('[DB Pool] Unexpected error on idle client:', err.message);
-});
-
-// Ensure local backup storage exists
-if (!fs.existsSync(DATA_DIR)) {
+function toPoolerUrl(connectionString) {
   try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const parsed = new URL(connectionString);
+    const match = parsed.hostname.match(/^db\.([a-z0-9]+)\.supabase\.co$/);
+    if (!match) return null;
+    parsed.hostname = `aws-0-${SUPABASE_POOLER_REGION}.pooler.supabase.com`;
+    parsed.port = '5432';
+    parsed.username = `postgres.${match[1]}`;
+    return parsed.toString();
+  } catch (_) {
+    return null;
+  }
+}
+
+const DB_URL_CANDIDATES = [toPoolerUrl(DB_URL), DB_URL]
+  .filter(Boolean)
+  .filter((candidate, index, all) => all.indexOf(candidate) === index);
+
+let pool = null;
+let connectingPromise = null;
+const dbStatus = { connected: false, via: null, lastError: null, lastAttempt: null };
+
+function describeDbTarget(connectionString) {
+  try {
+    const parsed = new URL(connectionString);
+    return `${parsed.hostname}:${parsed.port || 5432}`;
+  } catch (_) {
+    return 'unknown-host';
+  }
+}
+
+function dbUnavailableError() {
+  const err = new Error(`Database unavailable${dbStatus.lastError ? ` (${dbStatus.lastError})` : ''}`);
+  err.code = 'DB_UNAVAILABLE';
+  return err;
+}
+
+async function connectDatabase() {
+  dbStatus.lastAttempt = new Date().toISOString();
+  for (const connectionString of DB_URL_CANDIDATES) {
+    const target = describeDbTarget(connectionString);
+    const candidate = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
+    candidate.on('error', (err) => {
+      console.error('[DB Pool] Unexpected error on idle client:', err.message);
+    });
+    try {
+      await candidate.query('SELECT 1');
+      const previous = pool;
+      pool = candidate;
+      if (previous) previous.end().catch(() => {});
+      dbStatus.connected = true;
+      dbStatus.via = target;
+      dbStatus.lastError = null;
+      console.log(`[DB] Connected to Supabase PostgreSQL via ${target}`);
+      return true;
+    } catch (err) {
+      dbStatus.lastError = `${target}: ${err.message}`;
+      console.error(`[DB] Could not connect via ${target}:`, err.message);
+      candidate.end().catch(() => {});
+    }
+  }
+  dbStatus.connected = false;
+  dbStatus.via = null;
+  return false;
+}
+
+async function getPool() {
+  if (pool) return pool;
+  if (!connectingPromise) {
+    connectingPromise = connectDatabase().finally(() => {
+      connectingPromise = null;
+    });
+  }
+  await connectingPromise;
+  if (!pool) throw dbUnavailableError();
+  return pool;
+}
+
+async function withTransaction(work) {
+  const activePool = await getPool();
+  const client = await activePool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await work(client);
+    await client.query('COMMIT');
+    return result;
   } catch (err) {
-    console.error('Failed to create DATA_DIR:', err);
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {}
+    throw err;
+  } finally {
+    client.release();
   }
-}
-
-// Local File Helper (Resilient Fallback Cache)
-function readLocalCollection(name) {
-  const filePath = path.join(DATA_DIR, `${name}.json`);
-  if (!fs.existsSync(filePath)) {
-    return name === 'master' ? { warehouses: [], products: [], events: [], requisitions: [] } : [];
-  }
-  try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch {
-    return name === 'master' ? { warehouses: [], products: [], events: [], requisitions: [] } : [];
-  }
-}
-
-function writeLocalCollection(name, data) {
-  try {
-    const filePath = path.join(DATA_DIR, `${name}.json`);
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
-  } catch (_) {}
 }
 
 // ==========================================
@@ -155,103 +223,112 @@ function mergeUnique(listA = [], listB = [], keys = ['id']) {
   return Array.from(map.values());
 }
 
-async function getFromDb(collectionName) {
-  try {
-    if (collectionName === 'master') {
-      let masterObj = { warehouses: [], products: [], events: [], requisitions: [] };
-      const res = await pool.query("SELECT key, data FROM public.master WHERE key = 'master_data' LIMIT 1;");
-      if (res.rows.length > 0 && res.rows[0].data && typeof res.rows[0].data === 'object') {
-        masterObj = { ...masterObj, ...res.rows[0].data };
-      }
-      try {
-        const whRes = await pool.query('SELECT raw_data FROM public.warehouses ORDER BY created_at DESC;');
-        if (whRes.rows.length > 0) {
-          const dbWhs = whRes.rows.map((r) => r.raw_data).filter(Boolean);
-          masterObj.warehouses = mergeUnique(masterObj.warehouses, dbWhs, ['id', 'code', 'name']);
-        }
-        const prRes = await pool.query('SELECT raw_data FROM public.products ORDER BY created_at DESC;');
-        if (prRes.rows.length > 0) {
-          const dbPrs = prRes.rows.map((r) => r.raw_data).filter(Boolean);
-          masterObj.products = mergeUnique(masterObj.products, dbPrs, ['id', 'code', 'sku', 'name']);
-        }
-        const evRes = await pool.query('SELECT raw_data FROM public.events ORDER BY created_at DESC;');
-        if (evRes.rows.length > 0) {
-          const dbEvs = evRes.rows.map((r) => r.raw_data).filter(Boolean);
-          masterObj.events = mergeUnique(masterObj.events, dbEvs, ['id', 'code', 'name']);
-        }
-        const reqRes = await pool.query('SELECT raw_data FROM public.requisitions ORDER BY created_at DESC;');
-        if (reqRes.rows.length > 0) {
-          const dbReqs = reqRes.rows.map((r) => r.raw_data).filter(Boolean);
-          masterObj.requisitions = mergeUnique(masterObj.requisitions, dbReqs, ['id', 'requisitionNo']);
-        }
-      } catch (_) {}
-      return masterObj;
-    }
+// Collections that are stored as one JSON object (blob in public.master) rather than a plain list of rows
+const OBJECT_COLLECTIONS = ['master', 'movements', 'logistics', 'carriers'];
+// Collections stored as one row per record, with the full record kept in raw_data
+const ROW_COLLECTIONS = ['users', 'warehouses', 'events', 'products', 'inbounds', 'movements', 'requisitions'];
+const SYNC_COLLECTIONS = Array.from(new Set([...OBJECT_COLLECTIONS, ...ROW_COLLECTIONS]));
 
-    if (collectionName === 'movements') {
-      const res = await pool.query("SELECT key, data FROM public.master WHERE key = 'movements_data' LIMIT 1;");
-      if (res.rows.length > 0 && res.rows[0].data && typeof res.rows[0].data === 'object') {
-        return res.rows[0].data;
-      }
-      const rawRes = await pool.query('SELECT raw_data FROM public.movements ORDER BY created_at DESC;');
-      if (rawRes.rows.length > 0) {
-        return rawRes.rows.map((r) => r.raw_data).filter(Boolean);
-      }
-      return readLocalCollection('movements');
-    }
-
-    if (collectionName === 'logistics' || collectionName === 'carriers') {
-      const res = await pool.query("SELECT key, data FROM public.master WHERE key = 'logistics_data' LIMIT 1;");
-      if (res.rows.length > 0 && res.rows[0].data) {
-        return res.rows[0].data;
-      }
-      return readLocalCollection('logistics');
-    }
-
-    const res = await pool.query(`SELECT raw_data FROM public.${collectionName} ORDER BY created_at DESC;`);
-    if (res.rows && res.rows.length > 0) {
-      return res.rows.map((r) => r.raw_data).filter(Boolean);
-    }
-    return readLocalCollection(collectionName);
-  } catch (err) {
-    console.warn(`[DB Read Warning] Failed for ${collectionName}, falling back to local:`, err.message);
-    return readLocalCollection(collectionName);
-  }
+function badPayloadError(message) {
+  const err = new Error(message);
+  err.code = 'BAD_PAYLOAD';
+  return err;
 }
 
-async function saveToDb(collectionName, items) {
-  writeLocalCollection(collectionName, items);
+// Reads from the database only. Any failure is thrown to the caller; we never answer with a
+// stale local copy, because that makes the client believe its data is safe when it is not.
+async function getFromDb(collectionName) {
+  if (!SYNC_COLLECTIONS.includes(collectionName)) {
+    throw badPayloadError(`Unknown collection: ${collectionName}`);
+  }
+  const db = await getPool();
 
+  if (collectionName === 'master') {
+    let masterObj = { warehouses: [], products: [], events: [], requisitions: [] };
+    const res = await db.query("SELECT key, data FROM public.master WHERE key = 'master_data' LIMIT 1;");
+    if (res.rows.length > 0 && res.rows[0].data && typeof res.rows[0].data === 'object') {
+      masterObj = { ...masterObj, ...res.rows[0].data };
+    }
+    const whRes = await db.query('SELECT raw_data FROM public.warehouses ORDER BY created_at DESC;');
+    if (whRes.rows.length > 0) {
+      const dbWhs = whRes.rows.map((r) => r.raw_data).filter(Boolean);
+      masterObj.warehouses = mergeUnique(masterObj.warehouses, dbWhs, ['id', 'code', 'name']);
+    }
+    const prRes = await db.query('SELECT raw_data FROM public.products ORDER BY created_at DESC;');
+    if (prRes.rows.length > 0) {
+      const dbPrs = prRes.rows.map((r) => r.raw_data).filter(Boolean);
+      masterObj.products = mergeUnique(masterObj.products, dbPrs, ['id', 'code', 'sku', 'name']);
+    }
+    const evRes = await db.query('SELECT raw_data FROM public.events ORDER BY created_at DESC;');
+    if (evRes.rows.length > 0) {
+      const dbEvs = evRes.rows.map((r) => r.raw_data).filter(Boolean);
+      masterObj.events = mergeUnique(masterObj.events, dbEvs, ['id', 'code', 'name']);
+    }
+    const reqRes = await db.query('SELECT raw_data FROM public.requisitions ORDER BY created_at DESC;');
+    if (reqRes.rows.length > 0) {
+      const dbReqs = reqRes.rows.map((r) => r.raw_data).filter(Boolean);
+      masterObj.requisitions = mergeUnique(masterObj.requisitions, dbReqs, ['id', 'requisitionNo']);
+    }
+    return masterObj;
+  }
+
+  if (collectionName === 'movements') {
+    const res = await db.query("SELECT key, data FROM public.master WHERE key = 'movements_data' LIMIT 1;");
+    if (res.rows.length > 0 && res.rows[0].data && typeof res.rows[0].data === 'object') {
+      return res.rows[0].data;
+    }
+    const rawRes = await db.query('SELECT raw_data FROM public.movements ORDER BY created_at DESC;');
+    return rawRes.rows.map((r) => r.raw_data).filter(Boolean);
+  }
+
+  if (collectionName === 'logistics' || collectionName === 'carriers') {
+    const res = await db.query("SELECT key, data FROM public.master WHERE key = 'logistics_data' LIMIT 1;");
+    if (res.rows.length > 0 && res.rows[0].data) {
+      return res.rows[0].data;
+    }
+    return { carriers: [], transporters: [] };
+  }
+
+  // collectionName is whitelisted above, so it is safe to use as a table name
+  const res = await db.query(`SELECT raw_data FROM public.${collectionName} ORDER BY created_at DESC;`);
+  return res.rows.map((r) => r.raw_data).filter(Boolean);
+}
+
+// Writes one collection using the caller's transaction client. A record that individually fails
+// is rolled back to a savepoint and reported in summary.failed, so one bad record cannot block
+// the rest of the batch. Any other failure is thrown so the whole transaction is rolled back.
+async function saveCollection(db, collectionName, items, summary) {
   try {
     if (collectionName === 'master') {
-      await pool.query(
-        `INSERT INTO public.master (key, data, updated_at) 
-         VALUES ('master_data', $1, NOW()) 
+      if (!items || typeof items !== 'object' || Array.isArray(items)) {
+        throw badPayloadError('master must be an object');
+      }
+      await db.query(
+        `INSERT INTO public.master (key, data, updated_at)
+         VALUES ('master_data', $1, NOW())
          ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();`,
         [JSON.stringify(items)]
       );
-      if (items && typeof items === 'object') {
-        if (Array.isArray(items.warehouses) && items.warehouses.length > 0) {
-          await saveToDb('warehouses', items.warehouses);
-        }
-        if (Array.isArray(items.products) && items.products.length > 0) {
-          await saveToDb('products', items.products);
-        }
-        if (Array.isArray(items.events) && items.events.length > 0) {
-          await saveToDb('events', items.events);
-        }
-        if (Array.isArray(items.requisitions) && items.requisitions.length > 0) {
-          await saveToDb('requisitions', items.requisitions);
-        }
+      if (Array.isArray(items.warehouses) && items.warehouses.length > 0) {
+        await saveCollection(db, 'warehouses', items.warehouses, summary);
+      }
+      if (Array.isArray(items.products) && items.products.length > 0) {
+        await saveCollection(db, 'products', items.products, summary);
+      }
+      if (Array.isArray(items.events) && items.events.length > 0) {
+        await saveCollection(db, 'events', items.events, summary);
+      }
+      if (Array.isArray(items.requisitions) && items.requisitions.length > 0) {
+        await saveCollection(db, 'requisitions', items.requisitions, summary);
       }
       return true;
     }
 
     if (collectionName === 'movements') {
       if (items && typeof items === 'object' && !Array.isArray(items)) {
-        await pool.query(
-          `INSERT INTO public.master (key, data, updated_at) 
-           VALUES ('movements_data', $1, NOW()) 
+        await db.query(
+          `INSERT INTO public.master (key, data, updated_at)
+           VALUES ('movements_data', $1, NOW())
            ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();`,
           [JSON.stringify(items)]
         );
@@ -261,23 +338,25 @@ async function saveToDb(collectionName, items) {
           ...(Array.isArray(items.returns) ? items.returns : []),
         ];
         if (flattened.length > 0) {
-          await saveToDb('movements', flattened);
+          await saveCollection(db, 'movements', flattened, summary);
         }
         return true;
       }
     }
 
     if (collectionName === 'logistics' || collectionName === 'carriers') {
-      await pool.query(
-        `INSERT INTO public.master (key, data, updated_at) 
-         VALUES ('logistics_data', $1, NOW()) 
+      await db.query(
+        `INSERT INTO public.master (key, data, updated_at)
+         VALUES ('logistics_data', $1, NOW())
          ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();`,
         [JSON.stringify(items)]
       );
       return true;
     }
 
-    if (!Array.isArray(items)) return false;
+    if (!Array.isArray(items)) {
+      throw badPayloadError(`Expected a list of records for ${collectionName}`);
+    }
 
     for (const item of items) {
       if (!item || typeof item !== 'object') continue;
@@ -364,14 +443,35 @@ async function saveToDb(collectionName, items) {
       }
 
       if (query) {
-        await pool.query(query, values);
+        await db.query('SAVEPOINT save_row');
+        try {
+          await db.query(query, values);
+          await db.query('RELEASE SAVEPOINT save_row');
+          summary.saved += 1;
+        } catch (rowErr) {
+          await db.query('ROLLBACK TO SAVEPOINT save_row');
+          summary.failed.push({ collection: collectionName, id, error: rowErr.message });
+          console.error(`[DB Write Error] ${collectionName} record ${id} was not saved:`, rowErr.message);
+        }
       }
     }
     return true;
   } catch (err) {
-    console.warn(`[DB Write Warning] Failed for ${collectionName}:`, err.message);
-    return false;
+    console.error(`[DB Write Error] Failed for ${collectionName}:`, err.message);
+    throw err;
   }
+}
+
+// Saves a collection atomically. Throws if the database cannot be reached or the transaction
+// fails, so callers can tell the client the data was NOT saved. Resolves with
+// { saved, failed } where failed lists individual records the database rejected.
+async function saveToDb(collectionName, items) {
+  if (!SYNC_COLLECTIONS.includes(collectionName)) {
+    throw badPayloadError(`Unknown collection: ${collectionName}`);
+  }
+  const summary = { saved: 0, failed: [] };
+  await withTransaction((db) => saveCollection(db, collectionName, items, summary));
+  return summary;
 }
 
 
@@ -391,7 +491,7 @@ function parseJsonBody(req) {
       try {
         resolve(JSON.parse(body));
       } catch (err) {
-        reject(err);
+        reject(badPayloadError(`Invalid JSON body: ${err.message}`));
       }
     });
     req.on('error', reject);
@@ -410,11 +510,18 @@ function sendJson(res, statusCode, data) {
   res.end(JSON.stringify(data));
 }
 
+// Tells the client the truth about a failed read/write: 503 when the database is unreachable,
+// 400 for a malformed request, 500 for anything else. The client must treat these as "not saved".
+function sendDbError(res, err) {
+  const statusCode = err.code === 'DB_UNAVAILABLE' ? 503 : err.code === 'BAD_PAYLOAD' ? 400 : 500;
+  sendJson(res, statusCode, { success: false, error: err.message });
+}
+
 // ==========================================
 // HTTP Server & Routes
 // ==========================================
 
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req, res) {
   setCorsHeaders(res);
 
   if (req.method === 'OPTIONS') {
@@ -428,11 +535,22 @@ const server = http.createServer(async (req, res) => {
 
   // Health / Status
   if (pathname === '/' || pathname === '/health') {
+    // Live check so "ok" really means data can be saved. Still answers 200 when degraded so the
+    // host's health probe does not restart a server that is just waiting for the database.
+    let databaseReachable = false;
+    try {
+      const db = await getPool();
+      await db.query('SELECT 1');
+      databaseReachable = true;
+    } catch (_) {}
     sendJson(res, 200, {
-      status: 'ok',
+      status: databaseReachable ? 'ok' : 'degraded',
       service: 'District Stock Central API',
       version: '1.0.32',
       database: 'Supabase PostgreSQL',
+      databaseConnected: databaseReachable,
+      databaseVia: databaseReachable ? dbStatus.via : null,
+      databaseError: databaseReachable ? null : dbStatus.lastError,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
     });
@@ -461,7 +579,8 @@ const server = http.createServer(async (req, res) => {
 
       // Persist session to Supabase database
       try {
-        await pool.query(
+        const db = await getPool();
+        await db.query(
           `INSERT INTO public.sessions (session_id, user_id, role, access_token, refresh_token, device_info, expires_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '30 days', NOW())
            ON CONFLICT (session_id) DO UPDATE SET
@@ -558,11 +677,15 @@ const server = http.createServer(async (req, res) => {
 
   // GET /api/sync/all
   if (pathname === '/api/sync/all' && req.method === 'GET') {
-    const allData = {};
-    for (const key of collections) {
-      allData[key] = await getFromDb(key);
+    try {
+      const allData = {};
+      for (const key of collections) {
+        allData[key] = await getFromDb(key);
+      }
+      sendJson(res, 200, { success: true, data: allData, timestamp: Date.now() });
+    } catch (err) {
+      sendDbError(res, err);
     }
-    sendJson(res, 200, { success: true, data: allData, timestamp: Date.now() });
     return;
   }
 
@@ -571,15 +694,17 @@ const server = http.createServer(async (req, res) => {
     try {
       const payload = await parseJsonBody(req);
       const updated = {};
+      const failed = [];
       for (const [key, val] of Object.entries(payload)) {
         if (collections.includes(key)) {
-          await saveToDb(key, val);
+          const result = await saveToDb(key, val);
+          failed.push(...result.failed);
           updated[key] = Array.isArray(val) ? val.length : 1;
         }
       }
-      sendJson(res, 200, { success: true, updated, timestamp: Date.now() });
-    } catch (e) {
-      sendJson(res, 400, { success: false, error: e.message });
+      sendJson(res, 200, { success: true, updated, failed, timestamp: Date.now() });
+    } catch (err) {
+      sendDbError(res, err);
     }
     return;
   }
@@ -589,14 +714,23 @@ const server = http.createServer(async (req, res) => {
   if (syncMatch) {
     const collectionName = syncMatch[1].toLowerCase();
 
+    if (!SYNC_COLLECTIONS.includes(collectionName)) {
+      sendJson(res, 404, { success: false, error: `Unknown collection: ${collectionName}` });
+      return;
+    }
+
     if (req.method === 'GET') {
-      const data = await getFromDb(collectionName);
-      sendJson(res, 200, {
-        success: true,
-        collection: collectionName,
-        count: Array.isArray(data) ? data.length : 1,
-        data,
-      });
+      try {
+        const data = await getFromDb(collectionName);
+        sendJson(res, 200, {
+          success: true,
+          collection: collectionName,
+          count: Array.isArray(data) ? data.length : 1,
+          data,
+        });
+      } catch (err) {
+        sendDbError(res, err);
+      }
       return;
     }
 
@@ -605,46 +739,72 @@ const server = http.createServer(async (req, res) => {
         const payload = await parseJsonBody(req);
         let itemsToSave = [];
 
-        if (collectionName === 'master' && typeof payload === 'object') {
+        if (OBJECT_COLLECTIONS.includes(collectionName) && payload && typeof payload === 'object' && !Array.isArray(payload)) {
+          // master / movements / logistics arrive as one object ({ warehouses, ... } / { outbounds, ... } /
+          // { carriers, transporters }) and must be saved exactly as sent.
           itemsToSave = payload;
         } else if (Array.isArray(payload)) {
           itemsToSave = payload;
         } else if (payload && Array.isArray(payload.data)) {
           itemsToSave = payload.data;
         } else if (payload && typeof payload === 'object') {
-          const existing = await getFromDb(collectionName);
+          // A single record: merge it into the stored copy (if any) and upsert just that record.
           const id = payload.id || payload.userId || payload.code || payload.consignmentNo;
-          const idx = id && Array.isArray(existing) ? existing.findIndex((x) => (x.id || x.userId || x.code || x.consignmentNo) === id) : -1;
-          if (idx >= 0) {
-            existing[idx] = { ...existing[idx], ...payload, updatedAt: new Date().toISOString() };
-          } else if (Array.isArray(existing)) {
-            existing.push({ ...payload, createdAt: payload.createdAt || new Date().toISOString() });
-          }
-          itemsToSave = existing;
+          const existing = id ? await getFromDb(collectionName) : [];
+          const match = id && Array.isArray(existing)
+            ? existing.find((x) => (x.id || x.userId || x.code || x.consignmentNo) === id)
+            : null;
+          const now = new Date().toISOString();
+          itemsToSave = [match
+            ? { ...match, ...payload, updatedAt: now }
+            : { ...payload, createdAt: payload.createdAt || now }];
         }
 
-        await saveToDb(collectionName, itemsToSave);
+        const result = await saveToDb(collectionName, itemsToSave);
         sendJson(res, 200, {
           success: true,
           collection: collectionName,
           count: Array.isArray(itemsToSave) ? itemsToSave.length : 1,
+          saved: result.saved,
+          failed: result.failed,
           timestamp: Date.now(),
         });
-      } catch (e) {
-        sendJson(res, 400, { success: false, error: e.message });
+      } catch (err) {
+        sendDbError(res, err);
       }
       return;
     }
   }
 
   sendJson(res, 404, { error: 'Not Found', path: pathname });
+}
+
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((err) => {
+    console.error('[Server] Unhandled request error:', err);
+    if (!res.headersSent) {
+      sendJson(res, 500, { success: false, error: err.message });
+    } else {
+      res.end();
+    }
+  });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`===============================================`);
-  console.log(`District Stock Central API Server (Supabase DB)`);
-  console.log(`Listening on http://0.0.0.0:${PORT}`);
-  console.log(`Connected to Supabase PostgreSQL at:`);
-  console.log(`db.xiojkhfuyjkklfopwjec.supabase.co`);
-  console.log(`===============================================`);
-});
+// Exposed so the persistence logic can be tested without starting the HTTP listener.
+module.exports = { saveCollection, saveToDb, getFromDb, withTransaction, getPool, connectDatabase, dbStatus };
+
+if (require.main === module) {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`===============================================`);
+    console.log(`District Stock Central API Server (Supabase DB)`);
+    console.log(`Listening on http://0.0.0.0:${PORT}`);
+    console.log(`===============================================`);
+  });
+
+  // Connect to the database now, and keep retrying until it is reachable. Requests that arrive
+  // while the database is down get a 503 (never a fake success).
+  connectDatabase();
+  setInterval(() => {
+    if (!dbStatus.connected) connectDatabase();
+  }, 30000).unref();
+}
