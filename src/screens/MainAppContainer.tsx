@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getTabsForRole } from '../navigation/roleTabsConfig';
 import RoleBottomNavigation from '../components/RoleBottomNavigation';
 import DistrictTopHeader from '../components/DistrictTopHeader';
+import { useUIStore } from '../store/zustand/useUIStore';
 
 // Role Tab Screens
 import DashboardTabScreen from './tabs/DashboardTabScreen';
@@ -16,16 +17,29 @@ import StockTabScreen from './tabs/StockTabScreen';
 import RaiseRequestsTabScreen from './tabs/RaiseRequestsTabScreen';
 import MyRequisitionsTabScreen from './tabs/MyRequisitionsTabScreen';
 
-export default function MainAppContainer({ session, onLogout }) {
+interface MainAppContainerProps {
+  session: any;
+  onLogout: () => void;
+}
+
+export const MainAppContainer: React.FC<MainAppContainerProps> = ({ session, onLogout }) => {
   const role = session?.role || 'Admin';
   const roleTabs = getTabsForRole(role);
 
-  // Default to first tab (Dashboard)
-  const [activeTabKey, setActiveTabKey] = useState(roleTabs[0]?.key || 'dashboard');
-  const [selectedDashboardWarehouse, setSelectedDashboardWarehouse] = useState('');
+  // Sync with Zustand UI Store
+  const { activeTab, setActiveTab } = useUIStore();
+  const [activeTabKey, setActiveTabKey] = useState<string>(
+    activeTab && roleTabs.some((t: any) => t.key === activeTab) ? activeTab : roleTabs[0]?.key || 'dashboard'
+  );
+  const [selectedDashboardWarehouse, setSelectedDashboardWarehouse] = useState<string>('');
+
+  const handleTabChange = (key: string) => {
+    setActiveTabKey(key);
+    setActiveTab(key);
+  };
 
   // Verify that activeTabKey is actually authorized for the user's role
-  const isAuthorizedTab = roleTabs.some((t) => t.key === activeTabKey);
+  const isAuthorizedTab = roleTabs.some((t: any) => t.key === activeTabKey);
   const currentKey = isAuthorizedTab ? activeTabKey : roleTabs[0]?.key || 'dashboard';
 
   const renderActiveScreen = () => {
@@ -35,7 +49,7 @@ export default function MainAppContainer({ session, onLogout }) {
           <DashboardTabScreen
             session={session}
             onLogout={onLogout}
-            onNavigateTab={setActiveTabKey}
+            onNavigateTab={handleTabChange}
             onSelectWarehouse={setSelectedDashboardWarehouse}
           />
         );
@@ -59,15 +73,15 @@ export default function MainAppContainer({ session, onLogout }) {
       case 'stock':
         return <StockTabScreen session={session} onLogout={onLogout} />;
       case 'raise-requests':
-        return <RaiseRequestsTabScreen session={session} onLogout={onLogout} onNavigateTab={setActiveTabKey} />;
+        return <RaiseRequestsTabScreen session={session} onLogout={onLogout} onNavigateTab={handleTabChange} />;
       case 'my-requisitions':
-        return <MyRequisitionsTabScreen session={session} onLogout={onLogout} onNavigateTab={setActiveTabKey} />;
+        return <MyRequisitionsTabScreen session={session} onLogout={onLogout} onNavigateTab={handleTabChange} />;
       default:
         return (
           <DashboardTabScreen
             session={session}
             onLogout={onLogout}
-            onNavigateTab={setActiveTabKey}
+            onNavigateTab={handleTabChange}
             onSelectWarehouse={setSelectedDashboardWarehouse}
           />
         );
@@ -95,12 +109,14 @@ export default function MainAppContainer({ session, onLogout }) {
         <RoleBottomNavigation
           tabs={roleTabs}
           activeTabKey={currentKey}
-          onTabSelect={setActiveTabKey}
+          onTabSelect={handleTabChange}
         />
       </View>
     </SafeAreaView>
   );
-}
+};
+
+export default MainAppContainer;
 
 const styles = StyleSheet.create({
   safeArea: {

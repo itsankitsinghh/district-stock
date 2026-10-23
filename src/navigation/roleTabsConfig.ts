@@ -1,13 +1,20 @@
 /**
- * District Stock — Exact Role-Based Navigation Configuration
+ * District Stock — Exact Role-Based Navigation Configuration (TypeScript)
  * 
- * Strict Tab Order Requirements:
- * - Admin: Dashboard, Requests, Reports, Master, User Setup
- * - Operations Manager: Dashboard, Requests, Reports, Master, User Setup
- * - Ground User — Warehouse: Dashboard, Movement, Reports, Stock
- * - Ground User — Event: Dashboard, Movement, Reports, Stock
- * - Event Planner: Dashboard, Raise Requests, My Requisitions
+ * STRICTLY LOCKED CONFIGURATION (MANDATORY RULE):
+ * 1. Admin: Dashboard, Reports, Master, User Setup
+ * 2. Operation Manager: Dashboard, Reports, Master, User Setup
+ * 3. Warehouse User: Dashboard, Movement, Reports, Stock
+ * 4. Event User: Dashboard, Movement, Reports, Stock
+ * 5. Event Planner: Dashboard, Raise Requests, My Requisitions
  */
+
+export interface NavTabItem {
+  key: string;
+  label: string;
+  icon: string;
+  activeIcon: string;
+}
 
 export const ROLE_TABS = {
   ADMIN: 'Admin',
@@ -15,11 +22,10 @@ export const ROLE_TABS = {
   GROUND_WAREHOUSE: 'Ground User — Warehouse',
   GROUND_EVENT: 'Ground User — Event',
   EVENT_PLANNER: 'Event Planner',
-};
+} as const;
 
-export const ROLE_TABS_CONFIG = {
+export const ROLE_TABS_CONFIG: Record<string, NavTabItem[]> = {
   // Role 1: Admin
-  // admin: dashboard, reports, master, user setup.
   'Admin': [
     { key: 'dashboard', label: 'Dashboard', icon: 'view-dashboard-outline', activeIcon: 'view-dashboard' },
     { key: 'reports', label: 'Reports', icon: 'chart-box-outline', activeIcon: 'chart-box' },
@@ -28,7 +34,6 @@ export const ROLE_TABS_CONFIG = {
   ],
 
   // Role 2: Operation Manager
-  // operation manager: dashboard, reports, master, user setup.
   'Operations Manager': [
     { key: 'dashboard', label: 'Dashboard', icon: 'view-dashboard-outline', activeIcon: 'view-dashboard' },
     { key: 'reports', label: 'Reports', icon: 'chart-box-outline', activeIcon: 'chart-box' },
@@ -43,7 +48,6 @@ export const ROLE_TABS_CONFIG = {
   ],
 
   // Role 3: Warehouse User
-  // warehouse user: dashboard, movement, reports, stock.
   'Ground User — Warehouse': [
     { key: 'dashboard', label: 'Dashboard', icon: 'view-dashboard-outline', activeIcon: 'view-dashboard' },
     { key: 'movement', label: 'Movement', icon: 'truck-fast-outline', activeIcon: 'truck-fast' },
@@ -58,7 +62,6 @@ export const ROLE_TABS_CONFIG = {
   ],
 
   // Role 4: Event User
-  // event user: dashboard, movement, reports, stock.
   'Ground User — Event': [
     { key: 'dashboard', label: 'Dashboard', icon: 'view-dashboard-outline', activeIcon: 'view-dashboard' },
     { key: 'movement', label: 'Movement', icon: 'truck-fast-outline', activeIcon: 'truck-fast' },
@@ -73,7 +76,6 @@ export const ROLE_TABS_CONFIG = {
   ],
 
   // Role 5: Event Planner
-  // event planner: dashboard, raise requests, my requisitions.
   'Event Planner': [
     { key: 'dashboard', label: 'Dashboard', icon: 'view-dashboard-outline', activeIcon: 'view-dashboard' },
     { key: 'raise-requests', label: 'Raise Requests', icon: 'plus-box-outline', activeIcon: 'plus-box' },
@@ -81,16 +83,7 @@ export const ROLE_TABS_CONFIG = {
   ],
 };
 
-/**
- * Get tabs for a given role, falling back to Admin if undefined
- * STRICTLY LOCKED CONFIGURATION:
- * 1. Admin: Dashboard, Reports, Master, User Setup
- * 2. Operation Manager: Dashboard, Reports, Master, User Setup
- * 3. Warehouse User: Dashboard, Movement, Reports, Stock
- * 4. Event User: Dashboard, Movement, Reports, Stock
- * 5. Event Planner: Dashboard, Raise Requests, My Requisitions
- */
-export function getTabsForRole(role) {
+export function getTabsForRole(role?: string): NavTabItem[] {
   if (!role) return ROLE_TABS_CONFIG['Admin'];
   
   if (ROLE_TABS_CONFIG[role]) {
@@ -99,7 +92,7 @@ export function getTabsForRole(role) {
 
   const normalized = role.toLowerCase().trim();
 
-  // 1. Warehouse User / Ground User — Warehouse / Warehouse Ground
+  // 1. Warehouse User / Ground User — Warehouse
   if (normalized.includes('warehouse')) {
     return ROLE_TABS_CONFIG['Ground User — Warehouse'];
   }
@@ -107,7 +100,7 @@ export function getTabsForRole(role) {
   if (normalized.includes('planner')) {
     return ROLE_TABS_CONFIG['Event Planner'];
   }
-  // 3. Event User / Ground User — Event / Event Ground
+  // 3. Event User / Ground User — Event
   if (normalized.includes('event')) {
     return ROLE_TABS_CONFIG['Ground User — Event'];
   }
@@ -120,7 +113,6 @@ export function getTabsForRole(role) {
     return ROLE_TABS_CONFIG['Admin'];
   }
 
-  // Exact / partial match safety fallback
   const found = Object.keys(ROLE_TABS_CONFIG).find(
     (r) => r.toLowerCase() === normalized
   );
@@ -129,5 +121,3 @@ export function getTabsForRole(role) {
   }
   return ROLE_TABS_CONFIG['Admin'];
 }
-
-

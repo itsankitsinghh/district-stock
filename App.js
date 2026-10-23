@@ -11,6 +11,8 @@ import masterService from './src/services/masterService';
 import inboundService from './src/services/inboundService';
 import movementService from './src/services/movementService';
 import { storageHelper } from './src/services/storageHelper';
+import StoreProvider from './src/providers/StoreProvider';
+import { useAuthStore } from './src/store/zustand/useAuthStore';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('splash');
@@ -129,11 +131,15 @@ export default function App() {
 
   const handleLoginSuccess = (userSession) => {
     setSession(userSession);
+    if (userSession?.user) {
+      useAuthStore.getState().setAuth(userSession.user);
+    }
     setCurrentScreen('dashboard');
   };
 
   const handleLogout = async () => {
     setSession(null);
+    useAuthStore.getState().logout();
     setCurrentScreen('login');
     try {
       await authService.logout();
@@ -162,39 +168,41 @@ export default function App() {
   };
 
   return (
-    <SafeAreaProvider>
-      <View style={styles.root}>
-        {currentScreen === 'splash' && (
-          <SplashScreen onFinish={handleSplashFinish} />
-        )}
-        {currentScreen === 'login' && (
-          <LoginScreen
-            onLoginSuccess={handleLoginSuccess}
-            onReplaySplash={handleReplaySplash}
-            onForgotPassword={handleGoToForgotPassword}
-          />
-        )}
-        {currentScreen === 'forgot-password' && (
-          <ForgotPasswordScreen
-            onBackToLogin={handleBackToLogin}
-            onCodeSent={handleCodeSent}
-          />
-        )}
-        {currentScreen === 'reset-password' && (
-          <ResetPasswordScreen
-            email={recoveryEmail}
-            onBack={handleGoToForgotPassword}
-            onResetSuccess={handleResetSuccess}
-          />
-        )}
-        {currentScreen === 'dashboard' && session && (
-          <MainAppContainer
-            session={session}
-            onLogout={handleLogout}
-          />
-        )}
-      </View>
-    </SafeAreaProvider>
+    <StoreProvider>
+      <SafeAreaProvider>
+        <View style={styles.root}>
+          {currentScreen === 'splash' && (
+            <SplashScreen onFinish={handleSplashFinish} />
+          )}
+          {currentScreen === 'login' && (
+            <LoginScreen
+              onLoginSuccess={handleLoginSuccess}
+              onReplaySplash={handleReplaySplash}
+              onForgotPassword={handleGoToForgotPassword}
+            />
+          )}
+          {currentScreen === 'forgot-password' && (
+            <ForgotPasswordScreen
+              onBackToLogin={handleBackToLogin}
+              onCodeSent={handleCodeSent}
+            />
+          )}
+          {currentScreen === 'reset-password' && (
+            <ResetPasswordScreen
+              email={recoveryEmail}
+              onBack={handleGoToForgotPassword}
+              onResetSuccess={handleResetSuccess}
+            />
+          )}
+          {currentScreen === 'dashboard' && session && (
+            <MainAppContainer
+              session={session}
+              onLogout={handleLogout}
+            />
+          )}
+        </View>
+      </SafeAreaProvider>
+    </StoreProvider>
   );
 }
 

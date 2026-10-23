@@ -1,9 +1,19 @@
 import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS } from '../theme/colors';
+import { NavTabItem } from '../navigation/roleTabsConfig';
 
-export default function RoleBottomNavigation({ tabs, activeTabKey, onTabSelect }) {
+interface RoleBottomNavigationProps {
+  tabs: NavTabItem[];
+  activeTabKey: string;
+  onTabSelect: (key: string) => void;
+}
+
+export const RoleBottomNavigation: React.FC<RoleBottomNavigationProps> = ({
+  tabs,
+  activeTabKey,
+  onTabSelect,
+}) => {
   if (!tabs || tabs.length === 0) return null;
 
   return (
@@ -14,7 +24,7 @@ export default function RoleBottomNavigation({ tabs, activeTabKey, onTabSelect }
             tab.key === activeTabKey ||
             (tab.key === 'user-setup' && activeTabKey === 'userSetup') ||
             (tab.key === 'userSetup' && activeTabKey === 'user-setup');
-          const iconName = isActive ? tab.activeIcon || tab.icon : tab.icon;
+          const iconName = (isActive ? tab.activeIcon || tab.icon : tab.icon) as any;
 
           return (
             <TouchableOpacity
@@ -51,7 +61,9 @@ export default function RoleBottomNavigation({ tabs, activeTabKey, onTabSelect }
       </View>
     </View>
   );
-}
+};
+
+export default RoleBottomNavigation;
 
 const styles = StyleSheet.create({
   navContainer: {
