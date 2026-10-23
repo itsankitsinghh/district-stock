@@ -33,11 +33,26 @@ export default function CreateInboundScreen({
   selectedDashboardWarehouse,
 }) {
   // Master products, warehouses & events (strictly master-created only)
-  const masterProducts = masterService?.getProducts?.() || [];
-  const masterWarehouses = masterService?.getWarehouses?.() || [];
-  const masterEvents = masterService?.getEvents?.() || [];
+  const [masterProducts, setMasterProducts] = useState(() => masterService?.getProducts?.() || []);
+  const [masterWarehouses, setMasterWarehouses] = useState(() => masterService?.getWarehouses?.() || []);
+  const [masterEvents, setMasterEvents] = useState(() => masterService?.getEvents?.() || []);
+  const [userAssignedWarehouses, setUserAssignedWarehouses] = useState(() => getUserAccessibleWarehouses(session));
 
-  const userAssignedWarehouses = getUserAccessibleWarehouses(session);
+  useEffect(() => {
+    const refreshMaster = () => {
+      setMasterProducts(masterService?.getProducts?.() || []);
+      setMasterWarehouses(masterService?.getWarehouses?.() || []);
+      setMasterEvents(masterService?.getEvents?.() || []);
+      setUserAssignedWarehouses(getUserAccessibleWarehouses(session));
+    };
+    refreshMaster();
+    if (masterService?.subscribe) {
+      const unsub = masterService.subscribe(() => {
+        refreshMaster();
+      });
+      return () => unsub();
+    }
+  }, [session]);
 
   const [sourceType, setSourceType] = useState('Warehouse');
   const [destType, setDestType] = useState('Warehouse');
@@ -50,7 +65,7 @@ export default function CreateInboundScreen({
     .filter((e) => (e.status || 'active').toLowerCase() === 'active')
     .map((e) => (typeof e === 'string' ? e : e.name || e.code));
 
-  const destWarehouseOptions = warehouseOptions;
+  const destWarehouseOptions = userAssignedWarehouses.length > 0 ? userAssignedWarehouses : warehouseOptions;
 
   const [currentInbound, setCurrentInbound] = useState(editingInbound || null);
   const currentStatus = (currentInbound?.status || 'Draft').toUpperCase();
@@ -92,7 +107,7 @@ export default function CreateInboundScreen({
   const initialSource =
     editingInbound?.source ||
     dashboardSelectedWh ||
-    (userAssignedWarehouses[0] || '');
+    (userAssignedWarehouses[0] || warehouseOptions[0] || '');
 
   const [source, setSource] = useState(initialSource);
 
@@ -102,29 +117,29 @@ export default function CreateInboundScreen({
     )
   );
 
-  // Destination options: all warehouses assigned to that user, EXCEPT the chosen source warehouse
-  const destinationOptions = userAssignedWarehouses.filter(
-    (wh) => wh.toLowerCase().trim() !== (source || '').toLowerCase().trim()
-  );
+  // Destination options: user accessible warehouses
+  const destinationOptions = destWarehouseOptions;
 
   const [destination, setDestination] = useState(() => {
     if (editingInbound?.destination) return editingInbound.destination;
-    const initialDestOpts = userAssignedWarehouses.filter(
-      (wh) => wh.toLowerCase().trim() !== (initialSource || '').toLowerCase().trim()
-    );
-    return initialDestOpts[0] || '';
+    return destWarehouseOptions[0] || '';
   });
+
+  useEffect(() => {
+    if (!source && warehouseOptions.length > 0) {
+      setSource(warehouseOptions[0]);
+    }
+  }, [warehouseOptions, source]);
+
+  useEffect(() => {
+    if (!destination && destWarehouseOptions.length > 0) {
+      setDestination(destWarehouseOptions[0]);
+    }
+  }, [destWarehouseOptions, destination]);
 
   const handleSelectSource = (item) => {
     setSource(item);
     setIsSourcePickerVisible(false);
-    // If destination currently matches new source, pick another valid destination
-    if (destination && destination.toLowerCase().trim() === item.toLowerCase().trim()) {
-      const remaining = userAssignedWarehouses.filter(
-        (wh) => wh.toLowerCase().trim() !== item.toLowerCase().trim()
-      );
-      setDestination(remaining[0] || '');
-    }
   };
 
 

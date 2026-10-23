@@ -324,7 +324,14 @@ export const authService = {
     usersDatabase.forEach((u) => {
       const role = (u.role || '').toLowerCase().trim();
       const email = (u.email || '').toLowerCase().trim();
-      if (role === 'admin' || role === 'super admin' || email === 'super.admin@district.com') {
+      if (
+        role === 'admin' ||
+        role === 'super admin' ||
+        role === 'operation manager' ||
+        role === 'operations manager' ||
+        role === 'op manager' ||
+        email === 'super.admin@district.com'
+      ) {
         if (!Array.isArray(u.assignedLocations)) {
           u.assignedLocations = [];
         }
@@ -338,7 +345,14 @@ export const authService = {
     if (currentSession) {
       const sRole = (currentSession.role || '').toLowerCase().trim();
       const sEmail = (currentSession.email || '').toLowerCase().trim();
-      if (sRole === 'admin' || sRole === 'super admin' || sEmail === 'super.admin@district.com') {
+      if (
+        sRole === 'admin' ||
+        sRole === 'super admin' ||
+        sRole === 'operation manager' ||
+        sRole === 'operations manager' ||
+        sRole === 'op manager' ||
+        sEmail === 'super.admin@district.com'
+      ) {
         if (!Array.isArray(currentSession.assignedLocations)) {
           currentSession.assignedLocations = [];
         }
@@ -365,7 +379,14 @@ export const authService = {
     usersDatabase.forEach((u) => {
       const role = (u.role || '').toLowerCase().trim();
       const email = (u.email || '').toLowerCase().trim();
-      if (role === 'admin' || role === 'super admin' || email === 'super.admin@district.com') {
+      if (
+        role === 'admin' ||
+        role === 'super admin' ||
+        role === 'operation manager' ||
+        role === 'operations manager' ||
+        role === 'op manager' ||
+        email === 'super.admin@district.com'
+      ) {
         if (Array.isArray(u.assignedLocations) && u.assignedLocations.includes(cleanName)) {
           u.assignedLocations = u.assignedLocations.filter((l) => l !== cleanName);
           updated = true;
@@ -376,7 +397,14 @@ export const authService = {
     if (currentSession) {
       const sRole = (currentSession.role || '').toLowerCase().trim();
       const sEmail = (currentSession.email || '').toLowerCase().trim();
-      if (sRole === 'admin' || sRole === 'super admin' || sEmail === 'super.admin@district.com') {
+      if (
+        sRole === 'admin' ||
+        sRole === 'super admin' ||
+        sRole === 'operation manager' ||
+        sRole === 'operations manager' ||
+        sRole === 'op manager' ||
+        sEmail === 'super.admin@district.com'
+      ) {
         if (Array.isArray(currentSession.assignedLocations)) {
           currentSession.assignedLocations = currentSession.assignedLocations.filter((l) => l !== cleanName);
         }
@@ -482,23 +510,31 @@ export const authService = {
     usersDatabase.forEach((u) => {
       const role = (u.role || '').toLowerCase().trim();
       const email = (u.email || '').toLowerCase().trim();
-      if (role === 'admin' || role === 'super admin' || email === 'super.admin@district.com') {
-        if (whSet.size > 0) {
-          const currentLocs = Array.isArray(u.assignedLocations) ? u.assignedLocations : [];
-          const merged = Array.from(new Set([...currentLocs, ...whSet]));
-          if (JSON.stringify(merged) !== JSON.stringify(u.assignedLocations)) {
-            u.assignedLocations = merged;
-            updated = true;
-          }
+      const isOpsOrAdmin =
+        role === 'admin' ||
+        role === 'super admin' ||
+        role === 'operation manager' ||
+        role === 'operations manager' ||
+        role === 'op manager' ||
+        email === 'super.admin@district.com';
+      const isEventTier =
+        role === 'event planner' ||
+        role === 'lead planner' ||
+        role === 'event user';
+
+      if (isOpsOrAdmin && whSet.size > 0) {
+        const currentLocs = Array.isArray(u.assignedLocations) ? u.assignedLocations : [];
+        const merged = Array.from(new Set([...currentLocs, ...whSet]));
+        if (JSON.stringify(merged) !== JSON.stringify(u.assignedLocations)) {
+          u.assignedLocations = merged;
+          updated = true;
         }
-      } else if (role === 'event planner' || role === 'lead planner') {
-        if (evSet.size > 0) {
-          const currentLocs = Array.isArray(u.assignedLocations) ? u.assignedLocations : [];
-          const merged = Array.from(new Set([...currentLocs, ...evSet]));
-          if (JSON.stringify(merged) !== JSON.stringify(u.assignedLocations)) {
-            u.assignedLocations = merged;
-            updated = true;
-          }
+      } else if (isEventTier && evSet.size > 0) {
+        const currentLocs = Array.isArray(u.assignedLocations) ? u.assignedLocations : [];
+        const merged = Array.from(new Set([...currentLocs, ...evSet]));
+        if (JSON.stringify(merged) !== JSON.stringify(u.assignedLocations)) {
+          u.assignedLocations = merged;
+          updated = true;
         }
       }
     });
@@ -506,12 +542,24 @@ export const authService = {
     if (currentSession) {
       const sRole = (currentSession.role || '').toLowerCase().trim();
       const sEmail = (currentSession.email || '').toLowerCase().trim();
-      if ((sRole === 'admin' || sRole === 'super admin' || sEmail === 'super.admin@district.com') && whSet.size > 0) {
+      const isSessionOpsOrAdmin =
+        sRole === 'admin' ||
+        sRole === 'super admin' ||
+        sRole === 'operation manager' ||
+        sRole === 'operations manager' ||
+        sRole === 'op manager' ||
+        sEmail === 'super.admin@district.com';
+      const isSessionEventTier =
+        sRole === 'event planner' ||
+        sRole === 'lead planner' ||
+        sRole === 'event user';
+
+      if (isSessionOpsOrAdmin && whSet.size > 0) {
         currentSession.assignedLocations = Array.from(new Set([
           ...(currentSession.assignedLocations || []),
           ...whSet,
         ]));
-      } else if ((sRole === 'event planner' || sRole === 'lead planner') && evSet.size > 0) {
+      } else if (isSessionEventTier && evSet.size > 0) {
         currentSession.assignedLocations = Array.from(new Set([
           ...(currentSession.assignedLocations || []),
           ...evSet,
@@ -614,7 +662,7 @@ export const authService = {
       status: user.status,
       mobile: user.mobile,
       assignedLocations: user.assignedLocations,
-      hub: user.assignedLocations && user.assignedLocations.length > 0 ? user.assignedLocations[0] : 'Central Hub',
+      hub: user.assignedLocations && user.assignedLocations.length > 0 ? user.assignedLocations[0] : '',
       accessCode: user.accessCode || user.userId || user.id,
       sessionId: fallbackId,
       accessToken: fallbackId,
@@ -707,7 +755,7 @@ export const authService = {
       status: user.status,
       mobile: user.mobile,
       assignedLocations: user.assignedLocations,
-      hub: user.assignedLocations && user.assignedLocations.length > 0 ? user.assignedLocations[0] : 'Central Hub',
+      hub: user.assignedLocations && user.assignedLocations.length > 0 ? user.assignedLocations[0] : '',
       accessCode: user.accessCode || raw,
       sessionId: fallbackId,
       accessToken: fallbackId,

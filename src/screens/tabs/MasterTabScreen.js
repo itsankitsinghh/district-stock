@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import masterService from '../../services/masterService';
 import pincodeService from '../../services/pincodeService';
 import { authService } from '../../services/authService';
+import { getUserAccessibleWarehouses } from '../../services/locationScopeHelper';
 import { COLORS } from '../../theme/colors';
 
 // Tracking type choices
@@ -1710,27 +1711,28 @@ export default function MasterTabScreen({ session, onLogout }) {
             <Text style={styles.inputLabel}>Warehouse</Text>
             {(() => {
               const activeMasterWhs = (masterService?.getWarehouses?.() || []).filter(
-                (w) => w.status === 'active'
+                (w) => (w.status || 'active').toLowerCase() === 'active'
               );
-              // Strictly filter only warehouses assigned to the currently active user
-              const userAssignedActiveWhs = activeMasterWhs.filter((w) =>
-                rawAssigned.some(
+              const accessibleNames = getUserAccessibleWarehouses(activeUser);
+              const matchedWhs = activeMasterWhs.filter((w) =>
+                accessibleNames.some(
                   (loc) => loc && (loc.toLowerCase().trim() === w.name.toLowerCase().trim() || loc.toLowerCase().trim() === (w.code || '').toLowerCase().trim())
                 )
               );
+              const finalWhs = matchedWhs.length > 0 ? matchedWhs : activeMasterWhs;
 
-              if (userAssignedActiveWhs.length === 0) {
+              if (finalWhs.length === 0) {
                 return (
                   <View style={[styles.inputBox, { backgroundColor: '#F8FAFC', justifyContent: 'center' }]}>
                     <Text style={{ fontSize: 13, color: '#94A3B8' }}>
-                      No warehouse assigned to your account
+                      No active warehouses found. Please create one in Warehouse tab.
                     </Text>
                   </View>
                 );
               }
               return (
                 <View style={styles.choiceChipsRow}>
-                  {userAssignedActiveWhs.map((w) => (
+                  {finalWhs.map((w) => (
                     <TouchableOpacity
                       key={w.id || w.name}
                       style={[styles.choiceChip, pWarehouse === w.name && styles.choiceChipActive]}

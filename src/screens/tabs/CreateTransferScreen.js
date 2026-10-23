@@ -33,9 +33,24 @@ export default function CreateTransferScreen({
   selectedDashboardWarehouse,
 }) {
   // Master products & accessible warehouses (strictly master-created only)
-  const masterProducts = masterService?.getProducts?.() || [];
-  const masterWarehouses = masterService?.getWarehouses?.() || [];
-  const masterEvents = masterService?.getEvents?.() || [];
+  const [masterProducts, setMasterProducts] = useState(() => masterService?.getProducts?.() || []);
+  const [masterWarehouses, setMasterWarehouses] = useState(() => masterService?.getWarehouses?.() || []);
+  const [masterEvents, setMasterEvents] = useState(() => masterService?.getEvents?.() || []);
+
+  useEffect(() => {
+    const refreshMaster = () => {
+      setMasterProducts(masterService?.getProducts?.() || []);
+      setMasterWarehouses(masterService?.getWarehouses?.() || []);
+      setMasterEvents(masterService?.getEvents?.() || []);
+    };
+    refreshMaster();
+    if (masterService?.subscribe) {
+      const unsub = masterService.subscribe(() => {
+        refreshMaster();
+      });
+      return () => unsub();
+    }
+  }, []);
 
   const [sourceType, setSourceType] = useState('Warehouse');
   const [destType, setDestType] = useState('Warehouse');
@@ -70,7 +85,20 @@ export default function CreateTransferScreen({
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [refNo, setRefNo] = useState(editingTransfer?.refNo || '');
   const [source, setSource] = useState(editingTransfer?.source || initialSource);
-  const [destination, setDestination] = useState(editingTransfer?.destination || initialDestOpts[0] || '');
+  const [destination, setDestination] = useState(editingTransfer?.destination || initialDestOpts[0] || (warehouseOptions[1] || warehouseOptions[0] || ''));
+
+  useEffect(() => {
+    if (!source && warehouseOptions.length > 0) {
+      setSource(warehouseOptions[0]);
+    }
+  }, [warehouseOptions, source]);
+
+  useEffect(() => {
+    if (!destination && warehouseOptions.length > 0) {
+      const alt = warehouseOptions.find((w) => w !== source) || warehouseOptions[0];
+      setDestination(alt);
+    }
+  }, [warehouseOptions, source, destination]);
 
   const destWarehouseOptions = warehouseOptions.filter(
     (w) => w.toLowerCase().trim() !== (source || '').toLowerCase().trim()

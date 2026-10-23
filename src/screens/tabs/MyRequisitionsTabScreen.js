@@ -32,6 +32,12 @@ export default function MyRequisitionsTabScreen({ session, onLogout, onNavigateT
 
   useEffect(() => {
     loadRequisitions();
+    if (masterService?.subscribe) {
+      const unsub = masterService.subscribe(() => {
+        loadRequisitions();
+      });
+      return () => unsub();
+    }
   }, []);
 
   const loadRequisitions = () => {

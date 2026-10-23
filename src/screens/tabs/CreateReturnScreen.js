@@ -26,9 +26,24 @@ import carrierService from '../../services/carrierService';
 
 export default function CreateReturnScreen({ editingReturn, onCancel, onSaveReturn, outboundList = [], session }) {
   // Master products, warehouses & events (strictly master-created only)
-  const masterProducts = (masterService?.getProducts?.() || []);
-  const masterWarehouses = masterService?.getWarehouses?.() || [];
-  const masterEvents = masterService?.getEvents?.() || [];
+  const [masterProducts, setMasterProducts] = useState(() => masterService?.getProducts?.() || []);
+  const [masterWarehouses, setMasterWarehouses] = useState(() => masterService?.getWarehouses?.() || []);
+  const [masterEvents, setMasterEvents] = useState(() => masterService?.getEvents?.() || []);
+
+  useEffect(() => {
+    const refreshMaster = () => {
+      setMasterProducts(masterService?.getProducts?.() || []);
+      setMasterWarehouses(masterService?.getWarehouses?.() || []);
+      setMasterEvents(masterService?.getEvents?.() || []);
+    };
+    refreshMaster();
+    if (masterService?.subscribe) {
+      const unsub = masterService.subscribe(() => {
+        refreshMaster();
+      });
+      return () => unsub();
+    }
+  }, []);
 
   const [sourceType, setSourceType] = useState('Event');
   const [destType, setDestType] = useState('Warehouse');
@@ -42,7 +57,6 @@ export default function CreateReturnScreen({ editingReturn, onCancel, onSaveRetu
     .map((e) => (typeof e === 'string' ? e : e.name || e.code));
 
   const destinationWarehouseList = warehouseOptions;
-
 
   // Completed outbound list for dropdown selection (empty if no user-created outbounds)
   const completedOutbounds = Array.isArray(outboundList) ? outboundList : [];
@@ -60,6 +74,18 @@ export default function CreateReturnScreen({ editingReturn, onCancel, onSaveRetu
   const [destination, setDestination] = useState(
     editingReturn?.destination || defaultSelectedOutbound?.source || warehouseOptions[0] || ''
   );
+
+  useEffect(() => {
+    if (!source && eventOptions.length > 0) {
+      setSource(eventOptions[0]);
+    }
+  }, [eventOptions, source]);
+
+  useEffect(() => {
+    if (!destination && warehouseOptions.length > 0) {
+      setDestination(warehouseOptions[0]);
+    }
+  }, [warehouseOptions, destination]);
 
   // --- SECTION 2: PRODUCT DETAILS ---
   const [productItems, setProductItems] = useState(() => {

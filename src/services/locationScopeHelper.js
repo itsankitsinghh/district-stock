@@ -79,8 +79,15 @@ export function getUserAccessibleWarehouses(user = null) {
   const role = (currentUser?.role || '').toLowerCase().trim();
   const email = (currentUser?.email || '').toLowerCase().trim();
 
-  // Admin always has access to all active warehouses
-  if (role === 'admin' || role === 'super admin' || email === 'super.admin@district.com') {
+  // Admin & Operation Manager have full access to all active warehouses
+  if (
+    role === 'admin' ||
+    role === 'super admin' ||
+    role === 'operation manager' ||
+    role === 'operations manager' ||
+    role === 'op manager' ||
+    email === 'super.admin@district.com'
+  ) {
     return activeWhNames;
   }
 
@@ -102,7 +109,9 @@ export function getUserAccessibleWarehouses(user = null) {
     .map((loc) => String(loc || '').trim())
     .filter((loc) => activeWhNames.some((wName) => wName.toLowerCase() === loc.toLowerCase()));
 
-  return Array.from(new Set(matched));
+  const finalMatched = Array.from(new Set(matched));
+  // Guarantee fallback to activeWhNames so newly created master warehouses are always visible and selectable
+  return finalMatched.length > 0 ? finalMatched : activeWhNames;
 }
 
 /**
@@ -116,8 +125,16 @@ export function getUserAccessibleEvents(user = null) {
   const currentUser = user || authService?.getCurrentSession?.();
   const role = (currentUser?.role || '').toLowerCase().trim();
 
-  // Admin and Event Planner have access to all active events by default
-  if (role === 'admin' || role === 'super admin' || role === 'event planner' || role === 'lead planner') {
+  // Admin, Operation Manager, Event Planner, and Event User have access to active events
+  if (
+    role === 'admin' ||
+    role === 'super admin' ||
+    role === 'operation manager' ||
+    role === 'operations manager' ||
+    role === 'event planner' ||
+    role === 'lead planner' ||
+    role === 'event user'
+  ) {
     return activeEvNames;
   }
 
@@ -139,7 +156,9 @@ export function getUserAccessibleEvents(user = null) {
     .map((loc) => String(loc || '').trim())
     .filter((loc) => activeEvNames.some((eName) => eName.toLowerCase() === loc.toLowerCase()));
 
-  return Array.from(new Set(matched));
+  const finalMatched = Array.from(new Set(matched));
+  // Guarantee fallback to activeEvNames so newly created master events are always visible and selectable
+  return finalMatched.length > 0 ? finalMatched : activeEvNames;
 }
 
 /**

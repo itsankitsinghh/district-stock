@@ -33,9 +33,24 @@ export default function CreateOutboundScreen({
   selectedDashboardWarehouse,
 }) {
   // Master products & accessible locations (strictly master-created only)
-  const masterProducts = masterService?.getProducts?.() || [];
-  const masterWarehouses = masterService?.getWarehouses?.() || [];
-  const masterEvents = masterService?.getEvents?.() || [];
+  const [masterProducts, setMasterProducts] = useState(() => masterService?.getProducts?.() || []);
+  const [masterWarehouses, setMasterWarehouses] = useState(() => masterService?.getWarehouses?.() || []);
+  const [masterEvents, setMasterEvents] = useState(() => masterService?.getEvents?.() || []);
+
+  useEffect(() => {
+    const refreshMaster = () => {
+      setMasterProducts(masterService?.getProducts?.() || []);
+      setMasterWarehouses(masterService?.getWarehouses?.() || []);
+      setMasterEvents(masterService?.getEvents?.() || []);
+    };
+    refreshMaster();
+    if (masterService?.subscribe) {
+      const unsub = masterService.subscribe(() => {
+        refreshMaster();
+      });
+      return () => unsub();
+    }
+  }, []);
 
   const [sourceType, setSourceType] = useState('Warehouse');
   const [destType, setDestType] = useState('Event');
@@ -50,7 +65,6 @@ export default function CreateOutboundScreen({
 
   const sourceWarehouseList = warehouseOptions;
   const destinationEventList = eventOptions;
-
 
   // Default Source from Dashboard Warehouse selection or first accessible warehouse
   const dashboardSelectedWh =
@@ -71,6 +85,18 @@ export default function CreateOutboundScreen({
   const [refNo, setRefNo] = useState(editingOutbound?.refNo || '');
   const [source, setSource] = useState(editingOutbound?.source || initialSource);
   const [destination, setDestination] = useState(editingOutbound?.destination || eventOptions[0] || '');
+
+  useEffect(() => {
+    if (!source && warehouseOptions.length > 0) {
+      setSource(warehouseOptions[0]);
+    }
+  }, [warehouseOptions, source]);
+
+  useEffect(() => {
+    if (!destination && eventOptions.length > 0) {
+      setDestination(eventOptions[0]);
+    }
+  }, [eventOptions, destination]);
 
   // --- SECTION 2: PRODUCT DETAILS (Exact matching format as Inbound) ---
   const [productItems, setProductItems] = useState(() => {

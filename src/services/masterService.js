@@ -384,6 +384,7 @@ class MasterService {
       }
     }
 
+    this.notifySubscribers({ type: 'EVENTS_UPDATED', events: this.events });
     return { success: true, event: newEvent };
   }
 
@@ -431,6 +432,7 @@ class MasterService {
       }
     }
 
+    this.notifySubscribers({ type: 'EVENTS_UPDATED', events: this.events });
     return { success: true, event: this.events[idx] };
   }
 
@@ -448,6 +450,7 @@ class MasterService {
         authService.unlinkEventFromEventPlanner?.(ev.name);
       }
     }
+    this.notifySubscribers({ type: 'EVENTS_UPDATED', events: this.events });
     return { success: true, status: this.events[idx].status };
   }
 
@@ -460,6 +463,7 @@ class MasterService {
     if (authService && authService.unlinkEventFromEventPlanner) {
       authService.unlinkEventFromEventPlanner(evName);
     }
+    this.notifySubscribers({ type: 'EVENTS_UPDATED', events: this.events });
     return { success: true };
   }
 

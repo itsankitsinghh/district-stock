@@ -33,8 +33,8 @@ export default function RaiseRequestsTabScreen({ session, onLogout, onNavigateTa
   // Inventory & Delivery Details
   const [requiredDate, setRequiredDate] = useState('');
   const [deliveryLocation, setDeliveryLocation] = useState('');
-  const [pocName, setPocName] = useState(session?.name || 'Sneha Patil');
-  const [pocNo, setPocNo] = useState('9820198201');
+  const [pocName, setPocName] = useState(session?.name || '');
+  const [pocNo, setPocNo] = useState(session?.mobile || session?.contactNo || session?.phone || '');
 
   // --- Modals State ---
   const [calendarTarget, setCalendarTarget] = useState(null); // 'eventDate' | 'requiredDate' | null
@@ -49,6 +49,12 @@ export default function RaiseRequestsTabScreen({ session, onLogout, onNavigateTa
   // Load Events & Products on mount
   useEffect(() => {
     loadData();
+    if (masterService?.subscribe) {
+      const unsub = masterService.subscribe(() => {
+        loadData();
+      });
+      return () => unsub();
+    }
   }, []);
 
   const loadData = () => {
@@ -77,7 +83,7 @@ export default function RaiseRequestsTabScreen({ session, onLogout, onNavigateTa
   // --- Handlers: Event Selection ---
   const handleSelectEvent = (event) => {
     setSelectedEvent(event);
-    setEventDate(event.dates || '10–12 Oct 2026');
+    setEventDate(event.dates || event.date || '');
     if (!deliveryLocation && event.venue) {
       setDeliveryLocation(event.venue);
     }

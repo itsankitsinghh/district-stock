@@ -20,6 +20,8 @@ import TablePagination from '../../components/TablePagination';
 import CommonCalendarModal from '../../components/CommonCalendarModal';
 import inboundService from '../../services/inboundService';
 import movementService from '../../services/movementService';
+import masterService from '../../services/masterService';
+import { getUserAccessibleWarehouses, getUserAccessibleEvents } from '../../services/locationScopeHelper';
 
 // --- INITIAL DATASETS (Empty initial data as requested for clean testing) ---
 const INITIAL_INBOUND_DATA = [];
@@ -384,9 +386,29 @@ export default function MovementTabScreen({ session, onLogout, selectedDashboard
     const randomNum = String(Math.floor(100 + Math.random() * 900));
     setFormNo(`${prefix}-2026-${randomNum}`);
     setFormDate('10 Oct 2026');
-    setFormRefNo(`REF-${randomNum}`);
-    setFormSource(activeTab === 'inbound' ? 'Central Supplier' : 'Warehouse A - Central');
-    setFormDestination(activeTab === 'inbound' ? 'Warehouse A - Central' : 'Event Hub');
+    const activeWhs = getUserAccessibleWarehouses(session);
+    const activeEvs = getUserAccessibleEvents(session);
+    const defWh1 = activeWhs[0] || 'Warehouse';
+    const defWh2 = activeWhs[1] || activeWhs[0] || 'Warehouse';
+    const defEv = activeEvs[0] || 'Event';
+
+    let defaultSource = defWh1;
+    let defaultDest = defEv;
+    if (activeTab === 'inbound') {
+      defaultSource = defWh2 !== defWh1 ? defWh2 : 'Supplier';
+      defaultDest = defWh1;
+    } else if (activeTab === 'outbound') {
+      defaultSource = defWh1;
+      defaultDest = defEv;
+    } else if (activeTab === 'transfer') {
+      defaultSource = defWh1;
+      defaultDest = defWh2;
+    } else if (activeTab === 'return') {
+      defaultSource = defEv;
+      defaultDest = defWh1;
+    }
+    setFormSource(defaultSource);
+    setFormDestination(defaultDest);
     setFormMethod(
       activeTab === 'inbound' || activeTab === 'return' ? 'Dock Receiving' : 'Dedicated Truck'
     );

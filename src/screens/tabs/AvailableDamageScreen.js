@@ -31,10 +31,24 @@ export default function AvailableDamageScreen({
   onClose,
   onAdjustmentComplete,
 }) {
-  const masterProducts =
+  const [masterProducts, setMasterProducts] = useState(() =>
     masterService && typeof masterService.getProducts === 'function'
       ? masterService.getProducts()
-      : [];
+      : []
+  );
+
+  useEffect(() => {
+    if (masterService?.subscribe) {
+      const unsub = masterService.subscribe(() => {
+        setMasterProducts(
+          masterService && typeof masterService.getProducts === 'function'
+            ? masterService.getProducts()
+            : []
+        );
+      });
+      return () => unsub();
+    }
+  }, []);
 
   // Camera permissions
   const [permission, requestPermission] = useCameraPermissions();
@@ -71,7 +85,7 @@ export default function AvailableDamageScreen({
 
   // Selected product
   const [selectedProduct, setSelectedProduct] = useState(
-    initialProduct || masterProducts[1] || masterProducts[0]
+    initialProduct || masterProducts[0] || null
   );
 
   // Scanner interactive states

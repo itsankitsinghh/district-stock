@@ -76,7 +76,21 @@ export default function ReportsTabScreen({ session, onLogout }) {
       : FINAL_REPORT_DEFINITIONS;
 
   // Warehouse Search & Select State (Single: only that warehouse; Multi: All + single-single)
-  const accessibleMasterWarehouses = getUserAccessibleWarehouses(session);
+  const [accessibleMasterWarehouses, setAccessibleMasterWarehouses] = useState(() => getUserAccessibleWarehouses(session));
+
+  useEffect(() => {
+    const refresh = () => {
+      setAccessibleMasterWarehouses(getUserAccessibleWarehouses(session));
+    };
+    refresh();
+    if (masterService?.subscribe) {
+      const unsub = masterService.subscribe(() => {
+        refresh();
+      });
+      return () => unsub();
+    }
+  }, [session]);
+
   const WAREHOUSES = getAnalyticsDropdownOptions(accessibleMasterWarehouses, 'Warehouse');
   const [warehouseSearchQuery, setWarehouseSearchQuery] = useState('');
   const [isWarehouseDropdownOpen, setIsWarehouseDropdownOpen] = useState(false);

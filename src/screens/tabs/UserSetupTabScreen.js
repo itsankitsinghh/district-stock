@@ -64,14 +64,26 @@ export default function UserSetupTabScreen({ session, onLogout }) {
     setMetrics(m);
   };
 
+  const [, setMasterRevision] = useState(0);
+
   useEffect(() => {
     refreshUsers();
+    let unsubMaster = () => {};
+    if (masterService?.subscribe) {
+      unsubMaster = masterService.subscribe(() => {
+        setMasterRevision((r) => r + 1);
+      });
+    }
+    let unsubscribe = () => {};
     if (authService.subscribe) {
-      const unsubscribe = authService.subscribe(() => {
+      unsubscribe = authService.subscribe(() => {
         refreshUsers();
       });
-      return () => unsubscribe();
     }
+    return () => {
+      unsubMaster();
+      unsubscribe();
+    };
   }, []);
 
   // Filtered users list (search + status filter)
