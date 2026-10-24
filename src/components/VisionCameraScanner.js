@@ -121,12 +121,14 @@ function VisionCameraScannerInternal({
   }
 
   return (
-    <View style={[style, { overflow: 'hidden', backgroundColor: '#000000' }]}>
+    <View style={[StyleSheet.absoluteFillObject, style, { overflow: 'hidden', backgroundColor: 'transparent' }]}>
       <Camera
         ref={cameraRef}
         style={StyleSheet.absoluteFillObject}
         device={device}
         isActive={isActive}
+        implementationMode="compatible"
+        resizeMode="cover"
         torchMode={canTorch ? 'on' : 'off'}
         onStarted={() => {
           console.log('VisionCamera preview started successfully!');
@@ -192,7 +194,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   loadingContainer: {
-    backgroundColor: '#000000',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
   },

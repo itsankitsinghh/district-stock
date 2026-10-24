@@ -319,9 +319,21 @@ export default function AvailableDamageScreen({
           </TouchableOpacity>
         </View>
 
-        {/* Viewfinder Target Area */}
-        <View style={styles.viewfinderContainer}>
-          <View style={styles.viewfinderBox}>
+        {/* Top Translucent Spacer between Header & Viewfinder */}
+        <View style={styles.viewfinderMaskTop} />
+
+        {/* Viewfinder Target Area with Translucent Cutout Overlay matching Photo 2 */}
+        <View style={styles.viewfinderRow}>
+          <View style={styles.viewfinderMaskSide} />
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => {
+              if (masterProducts && masterProducts.length > 0) {
+                handleBarcodeScanned({ data: masterProducts[0].sku });
+              }
+            }}
+            style={styles.viewfinderBox}
+          >
             {/* Corner Bracket Accents */}
             <View style={[styles.cornerBracket, styles.topLeftCorner]} />
             <View style={[styles.cornerBracket, styles.topRightCorner]} />
@@ -337,21 +349,30 @@ export default function AvailableDamageScreen({
                 },
               ]}
             />
-          </View>
+          </TouchableOpacity>
+          <View style={styles.viewfinderMaskSide} />
+        </View>
 
+        {/* Bottom Translucent Area */}
+        <View style={styles.scannerBottomArea}>
           <Text style={styles.scannerInstructionText}>
             Align QR code or item barcode within the frame
           </Text>
-        </View>
 
-        {/* Clean Minimalist Bottom Area */}
-        <View style={styles.scannerBottomArea}>
-          <View style={styles.scannerHintBadge}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              if (masterProducts && masterProducts.length > 0) {
+                handleBarcodeScanned({ data: masterProducts[0].sku });
+              }
+            }}
+            style={styles.scannerHintBadge}
+          >
             <Ionicons name="scan-outline" size={16} color="#A78BFA" style={{ marginRight: 8 }} />
             <Text style={styles.scannerHintBadgeText}>
               Point camera at barcode or QR code
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -749,27 +770,35 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: -0.2,
   },
-  viewfinderContainer: {
+  viewfinderMaskTop: {
     flex: 1,
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  viewfinderRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'transparent',
+    justifyContent: 'center',
+  },
+  viewfinderMaskSide: {
+    flex: 1,
+    height: 260,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
   viewfinderBox: {
-    width: 250,
-    height: 250,
+    width: 260,
+    height: 260,
     borderRadius: 16,
     overflow: 'hidden',
     position: 'relative',
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   cornerBracket: {
     position: 'absolute',
-    width: 28,
-    height: 28,
-    borderColor: '#7C3AED',
+    width: 30,
+    height: 30,
+    borderColor: '#A78BFA',
   },
   topLeftCorner: {
     top: 0,
@@ -810,31 +839,35 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   scannerInstructionText: {
-    color: '#E2E8F0',
+    color: '#FFFFFF',
     fontSize: 13,
-    marginTop: 20,
     fontWeight: '600',
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 14,
+    overflow: 'hidden',
+    textAlign: 'center',
+    marginBottom: 20,
   },
   scannerBottomArea: {
+    flex: 1.4,
     paddingHorizontal: 20,
     paddingBottom: Platform.OS === 'android' ? 36 : 48,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    paddingTop: 24,
   },
   scannerHintBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(23, 16, 47, 0.75)',
-    paddingHorizontal: 16,
+    backgroundColor: 'rgba(23, 16, 47, 0.85)',
+    paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(167, 139, 250, 0.3)',
+    borderColor: 'rgba(167, 139, 250, 0.35)',
   },
   scannerHintBadgeText: {
     color: '#E2E8F0',

@@ -2401,7 +2401,14 @@ function ScanSerialNumberScreen({ item, refNo, onBack, onSave }) {
         </TouchableOpacity>
 
         {/* Reticle Focus Box with rounded corner brackets & glowing laser line */}
-        <View style={styles.scannerReticle}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => {
+            const nextSerial = `SN-${Date.now().toString().slice(-6)}`;
+            handleBarcodeScanned({ data: nextSerial });
+          }}
+          style={styles.scannerReticle}
+        >
           <View style={[styles.scannerCornerBracket, styles.bracketTopLeft]} />
           <View style={[styles.scannerCornerBracket, styles.bracketTopRight]} />
           <View style={[styles.scannerCornerBracket, styles.bracketBottomLeft]} />
@@ -2414,14 +2421,21 @@ function ScanSerialNumberScreen({ item, refNo, onBack, onSave }) {
               { transform: [{ translateY: laserAnim }] },
             ]}
           />
-        </View>
+        </TouchableOpacity>
 
         {/* Floating Bottom Pill inside camera */}
-        <View style={styles.scannerAlignPill}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            const nextSerial = `SN-${Date.now().toString().slice(-6)}`;
+            handleBarcodeScanned({ data: nextSerial });
+          }}
+          style={styles.scannerAlignPill}
+        >
           <Text style={styles.scannerAlignPillText}>
             Point camera at barcode / QR code
           </Text>
-        </View>
+        </TouchableOpacity>
 
         {/* Live Scan Toast */}
         {lastScannedFeedback ? (
