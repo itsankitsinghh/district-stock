@@ -138,77 +138,27 @@ export default function MovementTabScreen({ session, onLogout, selectedDashboard
 
   // Subtitle matching Figma SVGs
   const getSubtitle = () => {
-    switch (activeTab) {
-      case 'inbound':
-        return 'Inbound movements';
-      case 'outbound':
-        return 'Outbound movements';
-      case 'return':
-        return 'Return movements';
-      case 'transfer':
-        return 'Transfer movements';
-      default:
-        return 'Inbound movements';
-    }
+    return activeTab === 'outbound' ? 'Outbound movements' : 'Inbound movements';
   };
 
   // Active Tab Title
   const getTabTitle = () => {
-    switch (activeTab) {
-      case 'inbound':
-        return 'Inbound';
-      case 'outbound':
-        return 'Outbound';
-      case 'return':
-        return 'Return';
-      case 'transfer':
-        return 'Transfer';
-      default:
-        return 'Inbound';
-    }
+    return activeTab === 'outbound' ? 'Outbound' : 'Inbound';
   };
 
   // Method column title per SVG
   const getMethodColumnTitle = () => {
-    if (activeTab === 'inbound' || activeTab === 'return') {
-      return 'Receiving Method';
-    }
-    if (activeTab === 'outbound') {
-      return 'Shipping Method';
-    }
-    return 'Transfer Method';
+    return activeTab === 'outbound' ? 'Shipping Method' : 'Receiving Method';
   };
 
   // ID Column title per SVG
   const getIdColumnTitle = () => {
-    switch (activeTab) {
-      case 'inbound':
-        return 'Inbound No.';
-      case 'outbound':
-        return 'Outbound No.';
-      case 'return':
-        return 'Return No.';
-      case 'transfer':
-        return 'Transfer No.';
-      default:
-        return 'Movement No.';
-    }
+    return activeTab === 'outbound' ? 'Outbound No.' : 'Inbound No.';
   };
 
   // Current active dataset
   const getCurrentData = () => {
-    switch (activeTab) {
-      case 'inbound':
-        return inboundList;
-      case 'outbound':
-        return outboundList;
-      case 'return':
-        return returnList;
-      case 'transfer':
-        return transferList;
-      default:
-        return inboundList;
-    }
+    return activeTab === 'outbound' ? outboundList : inboundList;
   };
 
   // Handle column header sorting
@@ -867,51 +817,6 @@ export default function MovementTabScreen({ session, onLogout, selectedDashboard
                 ]}
               >
                 Outbound
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Row 2: Return & Transfer */}
-          <View style={[styles.tabsNavRow, { marginTop: 8 }]}>
-            <TouchableOpacity
-              style={[
-                styles.tabNavBtn,
-                activeTab === 'return' ? styles.tabNavBtnActive : styles.tabNavBtnInactive,
-              ]}
-              activeOpacity={0.8}
-              onPress={() => {
-                setActiveTab('return');
-                setSearchQuery('');
-              }}
-            >
-              <Text
-                style={[
-                  styles.tabNavText,
-                  activeTab === 'return' ? styles.tabNavTextActive : styles.tabNavTextInactive,
-                ]}
-              >
-                Return
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.tabNavBtn,
-                activeTab === 'transfer' ? styles.tabNavBtnActive : styles.tabNavBtnInactive,
-              ]}
-              activeOpacity={0.8}
-              onPress={() => {
-                setActiveTab('transfer');
-                setSearchQuery('');
-              }}
-            >
-              <Text
-                style={[
-                  styles.tabNavText,
-                  activeTab === 'transfer' ? styles.tabNavTextActive : styles.tabNavTextInactive,
-                ]}
-              >
-                Transfer
               </Text>
             </TouchableOpacity>
           </View>

@@ -25,6 +25,7 @@ export default function App() {
 
     async function bootstrap() {
       try {
+        // Step 1: Initial local cache load
         await Promise.all([
           authService.init(),
           masterService.init(),
@@ -32,29 +33,28 @@ export default function App() {
           movementService.init(),
           carrierService.init(),
         ]);
-        // Trigger background cloud sync with Render backend and then refresh services
-        storageHelper.syncWithCloud().then(async () => {
-          try {
-            await Promise.all([
-              authService.init(true),
-              masterService.init(true),
-              inboundService.init(true),
-              movementService.init(true),
-              carrierService.init(true),
-            ]);
-            if (isMounted && authService.isSessionValid()) {
-              const live = authService.getCurrentSession();
-              if (live) setSession({ ...live });
-            }
-          } catch (_) {}
-        }).catch(() => {});
 
         if (isMounted && authService.isSessionValid()) {
           const live = authService.getCurrentSession();
-          if (live) {
-            setSession({ ...live });
-          }
+          if (live) setSession({ ...live });
         }
+
+        // Step 2: High-speed cloud sync with Supabase Cloud DB (~250ms)
+        // Restores any newly created or existing user data across APK updates and reinstalls
+        try {
+          await storageHelper.syncWithCloud();
+          await Promise.all([
+            authService.init(true),
+            masterService.init(true),
+            inboundService.init(true),
+            movementService.init(true),
+            carrierService.init(true),
+          ]);
+          if (isMounted && authService.isSessionValid()) {
+            const live = authService.getCurrentSession();
+            if (live) setSession({ ...live });
+          }
+        } catch (_) {}
       } catch (err) {
         console.warn('Bootstrap error:', err);
       }

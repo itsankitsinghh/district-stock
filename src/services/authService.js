@@ -613,7 +613,7 @@ export const authService = {
     };
 
     // Find account by email, userId, id, or accessCode
-    const user = usersDatabase.find(
+    let user = usersDatabase.find(
       (u) =>
         (u.email && u.email.toLowerCase() === cleanId) ||
         matchesId(u.userId) ||
@@ -621,6 +621,22 @@ export const authService = {
         matchesId(u.id) ||
         (cleanId === 'admin' && u.role === 'Admin')
     );
+
+    // If account not found in local cache, perform quick cloud sync with Supabase and re-check
+    if (!user) {
+      try {
+        await storageHelper.syncWithCloud();
+        await this.init(true);
+        user = usersDatabase.find(
+          (u) =>
+            (u.email && u.email.toLowerCase() === cleanId) ||
+            matchesId(u.userId) ||
+            matchesId(u.accessCode) ||
+            matchesId(u.id) ||
+            (cleanId === 'admin' && u.role === 'Admin')
+        );
+      } catch (_) {}
+    }
 
     if (!user) {
       return {
@@ -716,7 +732,7 @@ export const authService = {
     };
 
     // Real-time lookup in users database
-    const user = usersDatabase.find((u) => {
+    let user = usersDatabase.find((u) => {
       const uCode = (u.accessCode || '').trim().toUpperCase();
       const uUserId = (u.userId || '').trim().toUpperCase();
       const uId = (u.id || '').trim().toUpperCase();
@@ -728,6 +744,26 @@ export const authService = {
         uEmail === clean
       );
     });
+
+    // If access code not found locally, sync with Supabase and re-check
+    if (!user) {
+      try {
+        await storageHelper.syncWithCloud();
+        await this.init(true);
+        user = usersDatabase.find((u) => {
+          const uCode = (u.accessCode || '').trim().toUpperCase();
+          const uUserId = (u.userId || '').trim().toUpperCase();
+          const uId = (u.id || '').trim().toUpperCase();
+          const uEmail = (u.email || '').trim().toUpperCase();
+          return (
+            matchesCode(uCode) ||
+            matchesCode(uUserId) ||
+            matchesCode(uId) ||
+            uEmail === clean
+          );
+        });
+      } catch (_) {}
+    }
 
     if (!user) {
       return {

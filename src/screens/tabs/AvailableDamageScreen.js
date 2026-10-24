@@ -16,7 +16,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import VisionCameraScanner from '../../components/VisionCameraScanner';
 import * as ImagePicker from 'expo-image-picker';
 import masterService from '../../services/masterService';
 
@@ -49,34 +49,6 @@ export default function AvailableDamageScreen({
       return () => unsub();
     }
   }, []);
-
-  // Camera permissions
-  const [permission, requestPermission] = useCameraPermissions();
-  const [cameraKey, setCameraKey] = useState(1);
-
-  // Auto-request or sync camera permission on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        if (!permission?.granted) {
-          const res = await requestPermission();
-          if (res?.granted) {
-            setCameraKey((k) => k + 1);
-          }
-        } else {
-          setCameraKey((k) => k + 1);
-        }
-      } catch (e) {
-        console.warn('Error requesting camera permission:', e);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (permission?.granted) {
-      setCameraKey((k) => k + 1);
-    }
-  }, [permission?.granted]);
 
   // Scan or Product Selection Step: 'scanner' | 'details'
   const [currentStep, setCurrentStep] = useState(
@@ -293,55 +265,41 @@ export default function AvailableDamageScreen({
   // VIEW 1: SCANNER VIEW (WITH REAL CAMERA OR FALLBACK)
   // =========================================================================
   if (currentStep === 'scanner') {
-    const hasPermission = permission?.granted;
-
     return (
       <View style={styles.scannerContainer}>
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-        {/* Real Live CameraView if permission granted */}
-        {hasPermission ? (
-          <CameraView
-            key={`damage-cam-surface-${cameraKey}`}
-            style={StyleSheet.absoluteFillObject}
-            facing="back"
-            enableTorch={isTorchOn}
-            barcodeScannerSettings={{
-              barcodeTypes: [
-                'qr',
-                'ean13',
-                'ean8',
-                'code128',
-                'code39',
-                'upc_a',
-                'upc_e',
-              ],
-            }}
-            onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-            onCameraReady={() => {
-              console.log('Damage Camera View Ready');
-            }}
-            onMountError={(err) => {
-              console.warn('Damage Camera Mount Error:', err);
-            }}
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFillObject, styles.cameraPlaceholder]}>
-            <View style={styles.permissionBox}>
-              <Ionicons name="camera-outline" size={54} color="#EDE9FE" />
-              <Text style={styles.permissionTitle}>Camera Access Needed</Text>
-              <Text style={styles.permissionDesc}>
-                District Stock requires camera permissions to scan barcodes on stock items.
-              </Text>
-              <TouchableOpacity
-                style={styles.grantPermissionBtn}
-                onPress={requestPermission}
-              >
-                <Text style={styles.grantPermissionBtnText}>Allow Camera Access</Text>
-              </TouchableOpacity>
+        {/* Real Live Vision Camera Scanner (with fallback permission UI matching exact design) */}
+        <VisionCameraScanner
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          isTorchOn={isTorchOn}
+          isActive={currentStep === 'scanner' && !scanned}
+          onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+          onCameraReady={() => {
+            console.log('Damage Vision Camera View Ready');
+          }}
+          onMountError={(err) => {
+            console.warn('Damage Vision Camera Mount Error:', err);
+          }}
+          renderNoPermission={({ requestPermission }) => (
+            <View style={[StyleSheet.absoluteFillObject, styles.cameraPlaceholder]}>
+              <View style={styles.permissionBox}>
+                <Ionicons name="camera-outline" size={54} color="#EDE9FE" />
+                <Text style={styles.permissionTitle}>Camera Access Needed</Text>
+                <Text style={styles.permissionDesc}>
+                  District Stock requires camera permissions to scan barcodes on stock items.
+                </Text>
+                <TouchableOpacity
+                  style={styles.grantPermissionBtn}
+                  onPress={requestPermission}
+                >
+                  <Text style={styles.grantPermissionBtnText}>Allow Camera Access</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        )}
+          )}
+        />
 
         {/* Top Scanner Overlay Header */}
         <View style={styles.scannerHeader}>

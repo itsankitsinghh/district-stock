@@ -25,6 +25,15 @@ export default function UserSetupTabScreen({ session, onLogout }) {
   const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'active' | 'inactive'
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Determine current logged-in user role
+  const currentRole = (
+    session?.role ||
+    authService.getCurrentSession?.()?.role ||
+    authService.getCurrentUser?.()?.role ||
+    ''
+  ).toLowerCase().trim();
+  const isOperationManager = currentRole.includes('operation');
+
   // Screen flow navigation modals
   // 1: List (main screen)
   // 2: Screen 02 (Select Role)
@@ -32,7 +41,7 @@ export default function UserSetupTabScreen({ session, onLogout }) {
   // 4: Screen 04 (Ground User Form)
   // 5: Screen 05 (Three-Dot Actions Sheet)
   const [activeModal, setActiveModal] = useState(null); // 'selectRole' | 'standardForm' | 'groundForm' | 'actionsMenu' | null
-  const [selectedRole, setSelectedRole] = useState('Operation Manager');
+  const [selectedRole, setSelectedRole] = useState(isOperationManager ? 'Warehouse User' : 'Operation Manager');
   const [groundType, setGroundType] = useState('Warehouse Ground'); // 'Warehouse Ground' | 'Event Ground'
   const [selectedUser, setSelectedUser] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -107,12 +116,16 @@ export default function UserSetupTabScreen({ session, onLogout }) {
     setFormError('');
     setIsWarehouseDropdownOpen(false);
     setIsEventDropdownOpen(false);
+    if (isOperationManager) {
+      setSelectedRole('Warehouse User');
+    }
     setActiveModal('selectRole');
   };
 
   // Select Role and advance to Screen 03 (Standard User Form)
   const handleSelectRole = (role) => {
-    setSelectedRole(role);
+    const finalRole = isOperationManager ? 'Warehouse User' : role;
+    setSelectedRole(finalRole);
     setFormError('');
     setFullName('');
     setPhoneNumber('');
@@ -121,14 +134,14 @@ export default function UserSetupTabScreen({ session, onLogout }) {
     setAccessCode('DS');
     setIsWarehouseDropdownOpen(false);
     setIsEventDropdownOpen(false);
-    if (role === 'Admin') {
+    if (finalRole === 'Admin') {
       const activeWhs = masterService
         .getWarehouses()
         .filter((w) => (w.status || 'active').toLowerCase() === 'active')
         .map((w) => w.name);
       setAssignedWarehouses(activeWhs);
       setAssignedEvents([]);
-    } else if (role === 'Event Planner') {
+    } else if (finalRole === 'Event Planner') {
       const activeEvs = masterService
         .getEvents()
         .filter((e) => (e.status || 'active').toLowerCase() === 'active')
@@ -860,31 +873,39 @@ export default function UserSetupTabScreen({ session, onLogout }) {
 
           <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
             <Text style={styles.roleSelectionTitle}>Select user role</Text>
-            <Text style={styles.roleSelectionSub}>Form fields change based on the selected role.</Text>
+            <Text style={styles.roleSelectionSub}>
+              {isOperationManager
+                ? 'Only Warehouse User role is authorized for creation.'
+                : 'Form fields change based on the selected role.'}
+            </Text>
 
             {/* 1. Admin */}
-            <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Admin')} activeOpacity={0.8}>
-              <View style={[styles.roleAvatar, { backgroundColor: '#F0E8FF' }]}>
-                <Text style={[styles.roleAvatarLetter, { color: '#8244EF' }]}>A</Text>
-              </View>
-              <View style={styles.roleCardTextCol}>
-                <Text style={styles.roleCardName}>Admin</Text>
-                <Text style={styles.roleCardDesc}>Global access & full system administration</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
-            </TouchableOpacity>
+            {!isOperationManager && (
+              <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Admin')} activeOpacity={0.8}>
+                <View style={[styles.roleAvatar, { backgroundColor: '#F0E8FF' }]}>
+                  <Text style={[styles.roleAvatarLetter, { color: '#8244EF' }]}>A</Text>
+                </View>
+                <View style={styles.roleCardTextCol}>
+                  <Text style={styles.roleCardName}>Admin</Text>
+                  <Text style={styles.roleCardDesc}>Global access & full system administration</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
+              </TouchableOpacity>
+            )}
 
             {/* 2. Operation Manager */}
-            <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Operation Manager')} activeOpacity={0.8}>
-              <View style={[styles.roleAvatar, { backgroundColor: '#F0E8FF' }]}>
-                <Text style={[styles.roleAvatarLetter, { color: '#8244EF' }]}>O</Text>
-              </View>
-              <View style={styles.roleCardTextCol}>
-                <Text style={styles.roleCardName}>Operation Manager</Text>
-                <Text style={styles.roleCardDesc}>Authorized warehouse operations & setup</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
-            </TouchableOpacity>
+            {!isOperationManager && (
+              <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Operation Manager')} activeOpacity={0.8}>
+                <View style={[styles.roleAvatar, { backgroundColor: '#F0E8FF' }]}>
+                  <Text style={[styles.roleAvatarLetter, { color: '#8244EF' }]}>O</Text>
+                </View>
+                <View style={styles.roleCardTextCol}>
+                  <Text style={styles.roleCardName}>Operation Manager</Text>
+                  <Text style={styles.roleCardDesc}>Authorized warehouse operations & setup</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
+              </TouchableOpacity>
+            )}
 
             {/* 3. Warehouse User */}
             <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Warehouse User')} activeOpacity={0.8}>
@@ -899,28 +920,32 @@ export default function UserSetupTabScreen({ session, onLogout }) {
             </TouchableOpacity>
 
             {/* 4. Event User */}
-            <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Event User')} activeOpacity={0.8}>
-              <View style={[styles.roleAvatar, { backgroundColor: '#E5FAF3' }]}>
-                <Text style={[styles.roleAvatarLetter, { color: '#159A79' }]}>E</Text>
-              </View>
-              <View style={styles.roleCardTextCol}>
-                <Text style={styles.roleCardName}>Event User</Text>
-                <Text style={styles.roleCardDesc}>Event site inventory & stock movement</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
-            </TouchableOpacity>
+            {!isOperationManager && (
+              <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Event User')} activeOpacity={0.8}>
+                <View style={[styles.roleAvatar, { backgroundColor: '#E5FAF3' }]}>
+                  <Text style={[styles.roleAvatarLetter, { color: '#159A79' }]}>E</Text>
+                </View>
+                <View style={styles.roleCardTextCol}>
+                  <Text style={styles.roleCardName}>Event User</Text>
+                  <Text style={styles.roleCardDesc}>Event site inventory & stock movement</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
+              </TouchableOpacity>
+            )}
 
             {/* 5. Event Planner */}
-            <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Event Planner')} activeOpacity={0.8}>
-              <View style={[styles.roleAvatar, { backgroundColor: '#FFF0D9' }]}>
-                <Text style={[styles.roleAvatarLetter, { color: '#D28A22' }]}>P</Text>
-              </View>
-              <View style={styles.roleCardTextCol}>
-                <Text style={styles.roleCardName}>Event Planner</Text>
-                <Text style={styles.roleCardDesc}>Assigned event scope & requisitions</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
-            </TouchableOpacity>
+            {!isOperationManager && (
+              <TouchableOpacity style={styles.roleSelectCard} onPress={() => handleSelectRole('Event Planner')} activeOpacity={0.8}>
+                <View style={[styles.roleAvatar, { backgroundColor: '#FFF0D9' }]}>
+                  <Text style={[styles.roleAvatarLetter, { color: '#D28A22' }]}>P</Text>
+                </View>
+                <View style={styles.roleCardTextCol}>
+                  <Text style={styles.roleCardName}>Event Planner</Text>
+                  <Text style={styles.roleCardDesc}>Assigned event scope & requisitions</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9B96AE" />
+              </TouchableOpacity>
+            )}
           </ScrollView>
         </View>
       </Modal>

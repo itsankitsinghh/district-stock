@@ -23,7 +23,7 @@ import CommonCalendarModal from '../../components/CommonCalendarModal';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import TwoPartLocationPicker from '../../components/TwoPartLocationPicker';
 import carrierService from '../../services/carrierService';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import VisionCameraScanner from '../../components/VisionCameraScanner';
 
 export default function CreateInboundScreen({
   onCancel,
@@ -2169,7 +2169,6 @@ export default function CreateInboundScreen({
 // COMPONENT: SCAN SERIAL NUMBER SCREEN (Matching District Stock Final SVG)
 // ===========================================================================
 function ScanSerialNumberScreen({ item, refNo, onBack, onSave }) {
-  const [permission, requestPermission] = useCameraPermissions();
   const [isTorchOn, setIsTorchOn] = useState(false);
   const [scannedSerials, setScannedSerials] = useState(
     item.serialNumbers && item.serialNumbers.length > 0
@@ -2226,13 +2225,6 @@ function ScanSerialNumberScreen({ item, refNo, onBack, onSave }) {
       },
     })
   ).current;
-
-  // Auto request camera permissions on mount
-  useEffect(() => {
-    if (!permission?.granted) {
-      requestPermission();
-    }
-  }, []);
 
   // Laser beam scan line animation
   const laserAnim = useRef(new Animated.Value(0)).current;
@@ -2320,7 +2312,6 @@ function ScanSerialNumberScreen({ item, refNo, onBack, onSave }) {
   const enteredQty = maxExpected;
   const expectedQty = enteredQty;
   const remainingQty = enteredQty > 0 ? Math.max(0, enteredQty - scannedSerials.length) : 0;
-  const hasCameraPermission = permission?.granted;
 
   return (
     <View style={styles.scannerRoot}>
@@ -2370,43 +2361,31 @@ function ScanSerialNumberScreen({ item, refNo, onBack, onSave }) {
       </View>
 
       {/* 3. CAMERA VIEWFINDER CARD (flex: 1 fills open space when door is closed) */}
-      <View style={[styles.scannerCameraCard, hasCameraPermission && { backgroundColor: 'transparent' }]}>
-        {hasCameraPermission ? (
-          <CameraView
-            key={`inbound-cam-surface-${hasCameraPermission}`}
-            style={StyleSheet.absoluteFillObject}
-            facing="back"
-            enableTorch={isTorchOn}
-            barcodeScannerSettings={{
-              barcodeTypes: [
-                'code128',
-                'code39',
-                'ean13',
-                'ean8',
-                'qr',
-                'upc_a',
-                'upc_e',
-              ],
-            }}
-            onBarcodeScanned={handleBarcodeScanned}
-            onCameraReady={() => console.log('Inbound Camera Ready')}
-            onMountError={(err) => console.warn('Inbound Camera Mount Error:', err)}
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFillObject, styles.scannerCameraFallback]}>
-            <Ionicons name="camera-outline" size={50} color="#CDBBFF" />
-            <Text style={styles.scannerCameraFallbackText}>
-              Camera permission required
-            </Text>
-            <TouchableOpacity
-              style={styles.scannerRequestPermBtn}
-              activeOpacity={0.8}
-              onPress={requestPermission}
-            >
-              <Text style={styles.scannerRequestPermBtnText}>Allow Access</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+      <View style={[styles.scannerCameraCard, { backgroundColor: 'transparent' }]}>
+        <VisionCameraScanner
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          isTorchOn={isTorchOn}
+          isActive={true}
+          onBarcodeScanned={handleBarcodeScanned}
+          onCameraReady={() => console.log('Inbound Vision Camera Ready')}
+          onMountError={(err) => console.warn('Inbound Vision Camera Mount Error:', err)}
+          renderNoPermission={({ requestPermission }) => (
+            <View style={[StyleSheet.absoluteFillObject, styles.scannerCameraFallback]}>
+              <Ionicons name="camera-outline" size={50} color="#CDBBFF" />
+              <Text style={styles.scannerCameraFallbackText}>
+                Camera permission required
+              </Text>
+              <TouchableOpacity
+                style={styles.scannerRequestPermBtn}
+                activeOpacity={0.8}
+                onPress={requestPermission}
+              >
+                <Text style={styles.scannerRequestPermBtnText}>Allow Access</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        />
 
         {/* Torch Button (Top-Right Floating Circle) */}
         <TouchableOpacity
