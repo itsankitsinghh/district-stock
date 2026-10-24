@@ -705,7 +705,7 @@ const styles = StyleSheet.create({
   // ==========================================
   scannerContainer: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: 'transparent',
   },
   cameraWrapper: {
     ...StyleSheet.absoluteFillObject,

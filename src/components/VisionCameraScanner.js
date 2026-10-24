@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import {
   Camera,
@@ -12,6 +13,8 @@ import {
   useCameraPermission,
 } from 'react-native-vision-camera';
 import { Ionicons } from '@expo/vector-icons';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 /**
  * Robust Error Boundary to guarantee VisionCamera never crashes the app process.
@@ -63,7 +66,7 @@ function VisionCameraScannerInternal({
   isTorchOn = false,
   enableTorch,
   facing = 'back',
-  style = StyleSheet.absoluteFillObject,
+  style,
   onCameraReady,
   onMountError,
   renderNoPermission,
@@ -71,6 +74,8 @@ function VisionCameraScannerInternal({
   const cameraRef = useRef(null);
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice(facing);
+  const [isCameraSettled, setIsCameraSettled] = useState(false);
+  const [remountKey, setRemountKey] = useState(0);
 
   const torchActive = enableTorch !== undefined ? !!enableTorch : !!isTorchOn;
   const canTorch = !!device?.hasTorch && torchActive;
@@ -84,6 +89,15 @@ function VisionCameraScannerInternal({
     }
   }, [hasPermission, requestPermission]);
 
+  // Give Android window/modal 250ms to finish measuring and layout before attaching native CameraX preview
+  useEffect(() => {
+    setIsCameraSettled(false);
+    const timer = setTimeout(() => {
+      setIsCameraSettled(true);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [remountKey]);
+
   // Permission not granted fallback
   if (!hasPermission) {
     if (renderNoPermission) {
@@ -91,7 +105,7 @@ function VisionCameraScannerInternal({
     }
 
     return (
-      <View style={[styles.fallbackContainer, style]}>
+      <View style={[styles.fallbackContainer, style || StyleSheet.absoluteFillObject]}>
         <View style={styles.permissionBox}>
           <Ionicons name="camera-outline" size={54} color="#EDE9FE" />
           <Text style={styles.permissionTitle}>Camera Access Needed</Text>
@@ -113,7 +127,7 @@ function VisionCameraScannerInternal({
   // Device still initializing or not found
   if (!device) {
     return (
-      <View style={[styles.loadingContainer, style]}>
+      <View style={[styles.loadingContainer, style || StyleSheet.absoluteFillObject]}>
         <ActivityIndicator size="large" color="#7C3AED" />
         <Text style={styles.loadingText}>Opening Vision Camera...</Text>
       </View>
@@ -121,24 +135,48 @@ function VisionCameraScannerInternal({
   }
 
   return (
-    <View style={[StyleSheet.absoluteFillObject, style, { overflow: 'hidden', backgroundColor: 'transparent' }]}>
-      <Camera
-        ref={cameraRef}
-        style={StyleSheet.absoluteFillObject}
-        device={device}
-        isActive={isActive}
-        implementationMode="compatible"
-        resizeMode="cover"
-        torchMode={canTorch ? 'on' : 'off'}
-        onStarted={() => {
-          console.log('VisionCamera preview started successfully!');
-          if (onCameraReady) onCameraReady();
-        }}
-        onError={(err) => {
-          console.warn('VisionCamera error:', err);
-          if (onMountError) onMountError(err);
-        }}
-      />
+    <View
+      style={[
+        {
+          width: SCREEN_WIDTH,
+          height: SCREEN_HEIGHT,
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          overflow: 'hidden',
+          backgroundColor: 'transparent',
+        },
+        style,
+      ]}
+    >
+      {isCameraSettled ? (
+        <Camera
+          key={`camera-${remountKey}`}
+          ref={cameraRef}
+          style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }}
+          device={device}
+          isActive={isActive}
+          implementationMode="compatible"
+          resizeMode="cover"
+          torchMode={canTorch ? 'on' : 'off'}
+          onStarted={() => {
+            console.log('VisionCamera preview started successfully!');
+            if (onCameraReady) onCameraReady();
+          }}
+          onError={(err) => {
+            console.warn('VisionCamera error:', err);
+            if (onMountError) onMountError(err);
+            // Auto-recover if session was interrupted or surface detached
+            setTimeout(() => {
+              setRemountKey((k) => k + 1);
+            }, 500);
+          }}
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFillObject, styles.loadingContainer]}>
+          <ActivityIndicator size="large" color="#A78BFA" />
+        </View>
+      )}
     </View>
   );
 }

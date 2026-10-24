@@ -60,7 +60,7 @@ export default function StockTabScreen({ session, onLogout }) {
       {/* Full-Screen Scanner Modal covering top header and bottom tabs */}
       <Modal
         visible={isAvailableDamageOpen}
-        animationType="slide"
+        animationType="none"
         statusBarTranslucent={true}
         onRequestClose={() => setIsAvailableDamageOpen(false)}
       >
