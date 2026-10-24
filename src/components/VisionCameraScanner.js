@@ -75,7 +75,6 @@ function VisionCameraScannerInternal({
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice(facing);
   const [isCameraSettled, setIsCameraSettled] = useState(false);
-  const [remountKey, setRemountKey] = useState(0);
 
   const torchActive = enableTorch !== undefined ? !!enableTorch : !!isTorchOn;
   const canTorch = !!device?.hasTorch && torchActive;
@@ -89,14 +88,13 @@ function VisionCameraScannerInternal({
     }
   }, [hasPermission, requestPermission]);
 
-  // Give Android window/modal 250ms to finish measuring and layout before attaching native CameraX preview
+  // Settle window/modal once on initial mount without flickering
   useEffect(() => {
-    setIsCameraSettled(false);
     const timer = setTimeout(() => {
       setIsCameraSettled(true);
-    }, 250);
+    }, 150);
     return () => clearTimeout(timer);
-  }, [remountKey]);
+  }, []);
 
   // Permission not granted fallback
   if (!hasPermission) {
@@ -151,7 +149,6 @@ function VisionCameraScannerInternal({
     >
       {isCameraSettled ? (
         <Camera
-          key={`camera-${remountKey}`}
           ref={cameraRef}
           style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }}
           device={device}
@@ -164,12 +161,8 @@ function VisionCameraScannerInternal({
             if (onCameraReady) onCameraReady();
           }}
           onError={(err) => {
-            console.warn('VisionCamera error:', err);
+            console.warn('VisionCamera event:', err?.message || err);
             if (onMountError) onMountError(err);
-            // Auto-recover if session was interrupted or surface detached
-            setTimeout(() => {
-              setRemountKey((k) => k + 1);
-            }, 500);
           }}
         />
       ) : (
